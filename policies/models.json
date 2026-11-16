@@ -14,15 +14,15 @@
       "family": "deepseek"
     },
     "auditor": {
-      "provider": "opencode-go",
+      "provider": "nous",
       "model": "glm-5.3-flash",
-      "variant": "high",
+      "variant": null,
       "family": "glm"
     },
     "hacker-high": {
-      "provider": "nous-direct",
-      "model": "minimax/minimax-m3.1-flash",
-      "variant": "high",
+      "provider": "nous",
+      "model": "minimax-m3.1-flash",
+      "variant": null,
       "family": "minimax"
     },
     "hacker-max": {
@@ -36,8 +36,30 @@
       "model": "glm-5.3-flash",
       "variant": "high",
       "family": "glm"
+    },
+    "compliance": {
+      "provider": "nous",
+      "model": "mimo-v2.6-flash",
+      "variant": null,
+      "family": "mimo"
+    },
+    "crouton-alpha": {
+      "provider": "opencode-go",
+      "model": "deepseek-v4.1-flash",
+      "variant": "max",
+      "family": "deepseek"
     }
   },
+  "persona_model_map": {
+    "orchestrator": "orchestrator",
+    "builder": "builder",
+    "auditor": "auditor",
+    "hacker": "hacker-max",
+    "release-engineer": "release-engineer",
+    "compliance": "compliance",
+    "crouton-alpha": "crouton-alpha"
+  },
+  "persona_model_map_note": "Agents in agents/ and .opencode/agents/ take their model: frontmatter from roles[persona_model_map[persona]] via tools/sync_agent_models.py. The hacker persona line carries the hacker-max default; dispatch selects the actual variant from roles[hacker-<variant>] (hacker-high or hacker-max) per policies/tiers.json.",
   "independence": {
     "orchestrator": {
       "family_not_in": [
@@ -45,11 +67,13 @@
       ],
       "enforced": false,
       "intentional_cost_grouping": true,
-      "reason": "orchestrator==builder (opencode-go deepseek-v4.1-flash#max) by design: orchestrator routes, builder implements; no independence claim between them. Independence claim applies only to builder<->auditor<->hacker triangle."
+      "reason": "orchestrator==builder (opencode-go deepseek-v4.1-flash#max) by design: orchestrator routes, builder implements; no independence claim between them. Independence claim applies only to author<->auditor<->hacker triangle."
     },
     "auditor": {
       "family_not_in": [
         "builder",
+        "compliance",
+        "crouton-alpha",
         "hacker-high",
         "hacker-max"
       ]
@@ -64,6 +88,8 @@
     "hacker-high": {
       "family_not_in": [
         "builder",
+        "compliance",
+        "crouton-alpha",
         "auditor",
         "hacker-max"
       ]
@@ -71,6 +97,8 @@
     "hacker-max": {
       "family_not_in": [
         "builder",
+        "compliance",
+        "crouton-alpha",
         "auditor",
         "hacker-high"
       ]
@@ -86,7 +114,21 @@
         "auditor"
       ],
       "intentional_cost_grouping": true,
-      "reason": "auditor/release-engineer share opencode-go glm-5.3-flash#high by design (verifier/deployer cost grouping); independence claim applies only to builder<->auditor<->hacker triangle; release-engineer vs auditor is intentionally allowed, hacker edges are enforced (families differ)."
+      "reason": "auditor/release-engineer share the glm-5.3-flash family (auditor: nous, no variant; release-engineer: opencode-go#high) by design (verifier/deployer cost grouping); independence claim applies only to author<->auditor<->hacker triangle; release-engineer vs auditor is intentionally allowed, hacker edges are enforced (families differ)."
+    },
+    "compliance": {
+      "family_not_in": [
+        "auditor",
+        "hacker-high",
+        "hacker-max"
+      ]
+    },
+    "crouton-alpha": {
+      "family_not_in": [
+        "auditor",
+        "hacker-high",
+        "hacker-max"
+      ]
     }
   },
   "independence_scope": {
@@ -96,7 +138,13 @@
       "hacker-high",
       "hacker-max"
     ],
-    "independence_claim": "Enforced claim is builder<->auditor<->hacker triangle only: builder family != auditor, hacker-high, hacker-max; auditor != hacker-high, hacker-max; hacker-high != hacker-max (mutual, families minimax vs openai, enforced because cost allows).",
+    "author_roles": [
+      "builder",
+      "compliance",
+      "crouton-alpha"
+    ],
+    "author_group_note": "builder, compliance, and crouton-alpha are the author roles; authors are an intentional same-family group, so no independence claim is made among authors (builder and crouton-alpha are both deepseek). Each author role must still differ in family from auditor, hacker-high, and hacker-max.",
+    "independence_claim": "Enforced claim is author->verifier/hacker: each author role (builder, compliance, crouton-alpha) family != auditor, hacker-high, hacker-max; auditor != hacker-high, hacker-max; hacker-high != hacker-max (mutual, families minimax vs openai, enforced because cost allows).",
     "intentional_cost_groupings": [
       {
         "group": [
@@ -113,8 +161,8 @@
           "release-engineer"
         ],
         "family": "glm",
-        "model": "opencode-go/glm-5.3-flash#high",
-        "reason": "verifier/deployer share cheap glm flash tier; independence claim applies only to builder<->auditor<->hacker triangle"
+        "model": "glm-5.3-flash (auditor: nous, no variant; release-engineer: opencode-go#high)",
+        "reason": "verifier/deployer share cheap glm flash tier; independence claim applies only to author<->auditor<->hacker triangle"
       }
     ],
     "note": "orchestrator/builder same-model is intentional cost grouping (chosen over hard forbid); hacker-high vs hacker-max mutual forbid is enforced (chosen over document-allowed because families already differ, no extra cost)."
@@ -134,7 +182,9 @@
     "builder",
     "auditor",
     "orchestrator",
-    "release-engineer"
+    "release-engineer",
+    "compliance",
+    "crouton-alpha"
   ],
   "acceptance_author_role_aliases": {
     "hacker": "hacker-high"
@@ -144,13 +194,14 @@
   "acceptance_author_family_derived": "minimax",
   "fallback_provider": "opencode-go",
   "provider_notes": {
-    "auditor/release-engineer": "opencode-go glm-5.3-flash, variant high (reversed 2026-11-07; was nous-direct z-ai/glm-5.3-flash); auditor/release-engineer same glm is an intentional cost grouping, independence claim applies only to builder<->auditor<->hacker triangle",
-    "compliance": "nous-direct portal, mimo-v2.6-flash",
-    "hacker-high": "nous-direct portal minimax/minimax-m3.1-flash, variant high (reversed 2026-11-07; was opencode-go; the built-in nous provider rejected the id at runtime, the direct portal accepts it); hacker-high != hacker-max mutual forbid is enforced (minimax vs openai, cost allows)",
+    "auditor/release-engineer": "auditor is nous glm-5.3-flash while release-engineer is opencode-go glm-5.3-flash#high, family glm, intentional cost grouping; independence claim applies only to author<->auditor<->hacker triangle",
+    "compliance": "nous portal, mimo-v2.6-flash",
+    "hacker-high": "nous portal minimax-m3.1-flash, no variant (the nous alias exposes no variants; #high is not resolvable); hacker-high != hacker-max mutual forbid is enforced (minimax vs openai, cost allows)",
     "hacker-max": "openai gpt-6-luna directly (variant max); hacker-max != hacker-high mutual forbid is enforced",
-    "orchestrator/builder": "opencode-go deepseek (opencode-go/deepseek-v4.1-flash#max); orchestrator==builder is an intentional cost grouping (chosen over hard forbid), independence claim applies only to builder<->auditor<->hacker triangle",
+    "orchestrator/builder": "opencode-go deepseek (opencode-go/deepseek-v4.1-flash#max); orchestrator==builder is an intentional cost grouping (chosen over hard forbid), independence claim applies only to author<->auditor<->hacker triangle",
     "acceptance": "default author hacker-high (minimax, derived family minimax); legacy 'hacker' aliases to hacker-high, deprecated; capability family is derived from roles, never free text",
     "fallback": "opencode-go is the fallback provider (minimax-m3.1-flash, glm-5.3-flash, mimo-v2.6-pro)",
-    "not_used": "nous x402 proxy (127.0.0.1:8890) and bedrock luna were unavailable; not used"
+    "not_used": "nous x402 proxy (127.0.0.1:8890) and bedrock luna were unavailable; not used",
+    "variant_resolution": "nous provider models expose no variants; auditor/hacker-high/compliance selectors omit #variant. opencode-go and openai models keep their declared variants."
   }
 }

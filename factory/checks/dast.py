@@ -50,33 +50,41 @@ def check_dast_baseline(ctx: dict) -> dict:
     )
     if not target:
         docker = executable("docker")
+        reason = "no live DAST target URL was supplied (FACTORY_DAST_TARGET_URL)"
         return make_proof(
             "DAST_BASELINE", ctx, result="TOOL_ABSENT",
             command=["docker", "exec", "k1", "zap-baseline"],
             tool_name="docker-zap-baseline",
             version=tool_version("docker", ctx=ctx) if docker else "absent",
-            detail="no live DAST target URL was supplied (FACTORY_DAST_TARGET_URL)",
-            stdout="DAST target unavailable", network="host-required",
+            detail=canonical_json({"skip_reason": reason}),
+            stdout=canonical_json({"skip_reason": reason}), network="host-required",
         )
     target = str(target)
     docker = executable("docker")
     if not docker:
+        reason = "docker binary is not on PATH; host-only ZAP execution is not accepted"
         return make_proof(
             "DAST_BASELINE", ctx, result="TOOL_ABSENT",
             command=["docker", "exec", "k1", "zap-baseline"],
             tool_name="docker", version="absent",
-            detail="docker binary is not on PATH; host-only ZAP execution is not accepted",
-            stdout="docker unavailable", network="host-required",
+            detail=canonical_json({"skip_reason": reason}),
+            stdout=canonical_json({"skip_reason": reason}), network="host-required",
         )
     container = str(env.get("FACTORY_K1_CONTAINER") or "k1")
     inspect = run_process(["docker", "inspect", "-f", "{{.State.Running}}", container], ctx=ctx, timeout=15)
     if inspect["exit"] != 0 or inspect["stdout"].strip() != "true":
+        reason = f"K1 container {container!r} is not running; start the pinned K1 image before DAST"
         return make_proof(
             "DAST_BASELINE", ctx, result="TOOL_ABSENT",
             command=["docker", "exec", container, "zap-baseline"],
             tool_name="docker", version=tool_version("docker", ctx=ctx),
-            exit_code=inspect["exit"], stdout=inspect["stdout"] + inspect["stderr"],
-            detail=f"K1 container {container!r} is not running; start the pinned K1 image before DAST",
+            exit_code=inspect["exit"],
+            stdout=canonical_json({
+                "skip_reason": reason,
+                "inspect_exit": inspect["exit"],
+                "inspect_output": inspect["stdout"] + inspect["stderr"],
+            }),
+            detail=canonical_json({"skip_reason": reason}),
             network="host-required",
         )
     task_fragment = re.sub(r"[^A-Za-z0-9_.-]", "_", str(ctx.get("task_id") or "task"))[:48]
@@ -99,11 +107,16 @@ def check_dast_baseline(ctx: dict) -> dict:
         r"(?:zap-baseline:\s*not found|executable file not found|command not found)",
         (proc["stdout"] + proc["stderr"]), re.I,
     ):
+        reason = f"ZAP baseline executable is unavailable inside K1 container {container!r}"
         return make_proof(
             "DAST_BASELINE", ctx, result="TOOL_ABSENT",
             command=command, tool_name="docker-zap-baseline", version=version,
-            exit_code=proc["exit"], stdout=proc["stdout"] + proc["stderr"],
-            detail=f"ZAP baseline executable is unavailable inside K1 container {container!r}",
+            exit_code=proc["exit"],
+            stdout=canonical_json({
+                "skip_reason": reason,
+                "output": proc["stdout"] + proc["stderr"],
+            }),
+            detail=canonical_json({"skip_reason": reason}),
             network="host-required",
         )
     with tempfile.TemporaryDirectory(prefix="factory-zap-report-") as tmp:

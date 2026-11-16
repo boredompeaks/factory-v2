@@ -33,6 +33,7 @@ from . import (
     tool_version,
     worktree_path,
 )
+from ..util import FactoryError, evidence_dir
 
 
 def _skip(check: str, ctx: dict, reason: str, command=None, tool="factory-checks") -> dict:
@@ -603,6 +604,45 @@ def check_semgrep(ctx: dict) -> dict:
     )
 
 
+def _product_python(ctx: dict) -> str | None:
+    """Resolve the product interpreter that owns the lane's dependencies."""
+    root = worktree_path(ctx) or repo_path(ctx)
+    if root is None:
+        return None
+    for parts in (
+        ("backend", "venv", "bin", "python"),
+        ("backend", ".venv", "bin", "python"),
+        (".venv", "bin", "python"),
+    ):
+        candidate = root.joinpath(*parts)
+        if candidate.is_file():
+            return os.fspath(candidate)
+    return None
+
+
+def _module_prefix(
+    ctx: dict, python: str | None, module: str,
+) -> tuple[list[str] | None, str | None]:
+    """Prefer ``<product python> -m <module>``; fall back to a PATH binary.
+
+    Returns the argv prefix to use and the version string when the module was
+    resolved through the product interpreter.
+    """
+    if python:
+        probe = run_process(
+            [python, "-m", module, "--version"], ctx=ctx,
+            cwd=worktree_path(ctx), timeout=30,
+        )
+        if probe["exit"] == 0:
+            text = (probe["stdout"] or probe["stderr"]).strip().splitlines()
+            version = text[0][:160] if text else "version query unavailable"
+            return [python, "-m", module], version
+    binary = executable(module)
+    if not binary:
+        return None, None
+    return [binary], None
+
+
 def check_radon(ctx: dict) -> dict:
     paths, problem = _diff_paths("RADON", ctx)
     if problem:
@@ -613,12 +653,16 @@ def check_radon(ctx: dict) -> dict:
     files = _python_changed(paths, worktree)
     if not files:
         return _skip("RADON", ctx, "no changed non-test Python source files")
-    binary = executable("radon")
-    if not binary:
-        return _absent("RADON", ctx, "radon binary is not on PATH", ["radon", "cc", "-s", "-j", "--min", "C"], "radon")
-    command = [binary, "cc", "-s", "-j", "--min", "C", *files]
+    prefix, module_version = _module_prefix(ctx, _product_python(ctx), "radon")
+    if prefix is None:
+        return _absent(
+            "RADON", ctx,
+            "radon is unavailable: no product venv module and no radon binary on PATH",
+            ["radon", "cc", "-s", "-j", "--min", "C"], "radon",
+        )
+    command = [*prefix, "cc", "-s", "-j", "--min", "C", *files]
     proc = run_process(command, ctx=ctx, cwd=worktree, timeout=180)
-    version = tool_version("radon", ctx=ctx, cwd=worktree)
+    version = module_version or tool_version("radon", ctx=ctx, cwd=worktree)
     if proc["error"]:
         return _tool_failure("RADON", ctx, proc, "radon", version, proc["error"])
     doc, parse_error = _json_from_output(proc["stdout"])
@@ -649,12 +693,16 @@ def check_bandit(ctx: dict) -> dict:
     files = _python_changed(paths, worktree)
     if not files:
         return _skip("BANDIT", ctx, "no changed non-test Python source files")
-    binary = executable("bandit")
-    if not binary:
-        return _absent("BANDIT", ctx, "bandit binary is not on PATH", ["bandit", "-f", "json", "-q"], "bandit")
-    command = [binary, "-r", "-f", "json", "-q", *files]
+    prefix, module_version = _module_prefix(ctx, _product_python(ctx), "bandit")
+    if prefix is None:
+        return _absent(
+            "BANDIT", ctx,
+            "bandit is unavailable: no product venv module and no bandit binary on PATH",
+            ["bandit", "-f", "json", "-q"], "bandit",
+        )
+    command = [*prefix, "-r", "-f", "json", "-q", *files]
     proc = run_process(command, ctx=ctx, cwd=worktree, timeout=180)
-    version = tool_version("bandit", ctx=ctx, cwd=worktree)
+    version = module_version or tool_version("bandit", ctx=ctx, cwd=worktree)
     if proc["error"]:
         return _tool_failure("BANDIT", ctx, proc, "bandit", version, proc["error"])
     doc, parse_error = _json_from_output(proc["stdout"])
@@ -673,6 +721,174 @@ def check_bandit(ctx: dict) -> dict:
     )
 
 
+def _materialize_workflows(ctx: dict, ref: str, dest: Path) -> tuple[list[str] | None, dict | None]:
+    """Extract ``.github/workflows`` at ``ref`` into ``dest`` safely.
+
+    Returns the POSIX paths of the extracted workflow files (empty when the
+    revision has no workflows) and, on failure, an error descriptor for the
+    caller's evidence proof.
+    """
+    root = repo_path(ctx)
+    if root is None:
+        return None, {"command": [], "exit": None, "stdout": "", "detail": "repo_root is required"}
+    listing_command = [
+        "git", "-C", str(root), "ls-tree", "-r", "--name-only", str(ref), "--", ".github/workflows",
+    ]
+    listed = run_process(listing_command, ctx=ctx, cwd=root, timeout=45)
+    if listed["error"] or listed["exit"] != 0:
+        return None, {
+            "command": listing_command,
+            "exit": listed["exit"],
+            "stdout": listed["stdout"] + listed["stderr"],
+            "detail": (
+                f"git ls-tree failed while listing workflows at {ref}: "
+                f"{listed['error'] or listed['stderr'].strip()}"
+            ),
+        }
+    names = sorted({line.strip() for line in listed["stdout"].splitlines() if line.strip()})
+    if not names:
+        return [], None
+    archive_command = ["git", "-C", str(root), "archive", str(ref), ".github/workflows"]
+    try:
+        archived = subprocess.run(
+            archive_command, cwd=str(root), capture_output=True, timeout=90, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return None, {
+            "command": archive_command, "exit": None, "stdout": "",
+            "detail": f"cannot archive workflows at {ref}: {exc}",
+        }
+    if archived.returncode != 0:
+        return None, {
+            "command": archive_command, "exit": archived.returncode,
+            "stdout": archived.stderr.decode("utf-8", "replace"),
+            "detail": f"git archive failed while materializing workflows at {ref}",
+        }
+    try:
+        with tarfile.open(fileobj=__import__("io").BytesIO(archived.stdout), mode="r:") as tf:
+            target_root = dest.resolve()
+            for member in tf.getmembers():
+                member_path = (target_root / member.name).resolve()
+                if target_root not in member_path.parents and member_path != target_root:
+                    return None, {
+                        "command": archive_command, "exit": 1, "stdout": member.name,
+                        "detail": f"unsafe path in workflow archive at {ref}: {member.name}",
+                    }
+                if member.isdir():
+                    member_path.mkdir(parents=True, exist_ok=True)
+                elif member.isfile():
+                    member_path.parent.mkdir(parents=True, exist_ok=True)
+                    source = tf.extractfile(member)
+                    if source is not None:
+                        member_path.write_bytes(source.read())
+                else:
+                    return None, {
+                        "command": archive_command, "exit": 1, "stdout": member.name,
+                        "detail": f"non-regular entry in workflow archive at {ref}: {member.name}",
+                    }
+    except (OSError, tarfile.TarError) as exc:
+        return None, {
+            "command": archive_command, "exit": None, "stdout": "",
+            "detail": f"cannot unpack workflows at {ref}: {exc}",
+        }
+    files = sorted(
+        PurePosixPath(name).as_posix()
+        for name in names
+        if (dest / name).is_file()
+    )
+    return files, None
+
+
+def _zizmor_fingerprints(tree: Path, findings: list) -> list[dict]:
+    """Normalize findings so base and head scans are comparable.
+
+    One fingerprint per finding, anchored at the location zizmor marks
+    ``Primary`` (falling back to the first location) so that related or hidden
+    annotations do not multiply a single finding.
+    """
+    tree_root = tree.resolve()
+    normalized: dict[str, dict] = {}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        rule = str(finding.get("ident") or finding.get("rule") or "unknown")
+        message_sha256 = sha256(str(finding.get("desc") or ""))
+        locations = finding.get("locations")
+        if not isinstance(locations, list):
+            locations = []
+        chosen = next(
+            (
+                location for location in locations
+                if isinstance(location, dict)
+                and isinstance(location.get("symbolic"), dict)
+                and location["symbolic"].get("kind") == "Primary"
+            ),
+            locations[0] if locations else {},
+        )
+        path = ""
+        line = 0
+        if isinstance(chosen, dict):
+            symbolic = chosen.get("symbolic")
+            key = symbolic.get("key") if isinstance(symbolic, dict) else None
+            local = key.get("Local") if isinstance(key, dict) else None
+            verbatim = local.get("verbatim_path") if isinstance(local, dict) else None
+            if verbatim:
+                raw = Path(str(verbatim))
+                if raw.is_absolute():
+                    try:
+                        path = raw.resolve().relative_to(tree_root).as_posix()
+                    except (OSError, ValueError):
+                        path = PurePosixPath(str(verbatim).replace("\\", "/")).as_posix()
+                else:
+                    path = PurePosixPath(str(verbatim).replace("\\", "/")).as_posix()
+                while path.startswith("./"):
+                    path = path[2:]
+            concrete = chosen.get("concrete")
+            loc = concrete.get("location") if isinstance(concrete, dict) else None
+            start = loc.get("start_point") if isinstance(loc, dict) else None
+            if isinstance(start, dict) and isinstance(start.get("row"), int):
+                line = start["row"]
+        fingerprint = {
+            "rule": rule, "path": path, "line": line, "message_sha256": message_sha256,
+        }
+        normalized[canonical_json(fingerprint)] = fingerprint
+    return [normalized[key] for key in sorted(normalized)]
+
+
+def _scan_workflows(
+    ctx: dict, binary: str, tree: Path, files: list[str], label: str,
+) -> tuple[list[dict] | None, dict | None]:
+    """Run zizmor over one materialized workflow set."""
+    if not files:
+        return [], None
+    command = [binary, "--format", "json", *files]
+    proc = run_process(command, ctx=ctx, cwd=tree, timeout=240)
+    if proc["error"]:
+        return None, {"kind": "error", "command": command, "proc": proc}
+    parsed, parse_error = _json_from_output(proc["stdout"])
+    if parse_error is not None:
+        return None, {"kind": "parse", "command": command, "proc": proc, "error": parse_error}
+    if isinstance(parsed, dict):
+        raw = parsed.get("findings") or parsed.get("results") or []
+    elif isinstance(parsed, list):
+        raw = parsed
+    else:
+        return None, {
+            "kind": "parse", "command": command, "proc": proc,
+            "error": f"{label} zizmor output is not a JSON list or object",
+        }
+    if not isinstance(raw, list):
+        return None, {
+            "kind": "parse", "command": command, "proc": proc,
+            "error": f"{label} zizmor findings payload is not a list",
+        }
+    # zizmor 1.x exits nonzero (a bitflag) when findings exist, so a valid JSON
+    # payload is authoritative; a nonzero exit with no payload is an error.
+    if proc["exit"] not in (0,) and not raw:
+        return None, {"kind": "exit", "command": command, "proc": proc}
+    return _zizmor_fingerprints(tree, raw), None
+
+
 def check_zizmor(ctx: dict) -> dict:
     paths, problem = _diff_paths("ZIZMOR", ctx)
     if problem:
@@ -680,97 +896,122 @@ def check_zizmor(ctx: dict) -> dict:
     worktree = worktree_path(ctx)
     if worktree is None:
         return make_proof("ZIZMOR", ctx, result="FAIL", detail="ctx.worktree is required")
-    workflow_changes = [p for p in paths if p.startswith(".github/workflows/") and (worktree / p).is_file()]
-    base_scan = not workflow_changes
+    base, head = ctx.get("base"), ctx.get("head")
+    if not base or not head:
+        return make_proof(
+            "ZIZMOR", ctx, result="FAIL",
+            detail="ctx.base and ctx.head are required for the base/head workflow comparison",
+        )
+    workflow_changes = [
+        p for p in paths if p.startswith(".github/workflows/") and (worktree / p).is_file()
+    ]
     binary = executable("zizmor")
     if not binary:
         return _absent("ZIZMOR", ctx, "zizmor binary is not on PATH", ["zizmor", "--format", "json"], "zizmor")
-    if base_scan:
-        root = repo_path(ctx)
-        base = ctx.get("base")
-        if not root or not base:
-            return make_proof("ZIZMOR", ctx, result="FAIL", detail="repo_root and base are required for weekly base scan")
-        with tempfile.TemporaryDirectory(prefix="factory-zizmor-base-") as tmp:
-            import subprocess
-            listed = subprocess.run(
-                ["git", "-C", str(root), "ls-tree", "-r", "--name-only", str(base), "--", ".github/workflows"],
-                capture_output=True, timeout=30, check=False,
-            )
-            if listed.returncode != 0:
-                return make_proof(
-                    "ZIZMOR", ctx, result="FAIL", command=listed.args, tool_name="git",
-                    version=tool_version("git", ctx=ctx), exit_code=listed.returncode,
-                    stdout=listed.stderr.decode("utf-8", "replace"),
-                    detail="git ls-tree failed while checking base workflows",
-                )
-            if not listed.stdout.strip():
-                return _skip("ZIZMOR", ctx, "no workflows at base; nothing to scan")
-            try:
-                tar_bytes = subprocess.run(
-                    ["git", "-C", str(root), "archive", str(base), ".github/workflows"],
-                    capture_output=True, timeout=60, check=False,
-                )
-                if tar_bytes.returncode != 0:
-                    return make_proof(
-                        "ZIZMOR", ctx, result="FAIL", command=tar_bytes.args, tool_name="git",
-                        version=tool_version("git", ctx=ctx), exit_code=tar_bytes.returncode,
-                        stdout=tar_bytes.stderr.decode("utf-8", "replace"),
-                        detail="git archive failed while materializing base workflows",
-                    )
-                with tarfile.open(fileobj=__import__("io").BytesIO(tar_bytes.stdout), mode="r:") as tf:
-                    target_root = Path(tmp).resolve()
-                    for member in tf.getmembers():
-                        member_path = (target_root / member.name).resolve()
-                        if target_root not in member_path.parents and member_path != target_root:
-                            return make_proof(
-                                "ZIZMOR", ctx, result="FAIL", command=tar_bytes.args,
-                                tool_name="git", version=tool_version("git", ctx=ctx),
-                                exit_code=1, stdout=member.name,
-                                detail=f"unsafe path in base workflow archive: {member.name}",
-                            )
-                        if member.isdir():
-                            member_path.mkdir(parents=True, exist_ok=True)
-                        elif member.isfile():
-                            member_path.parent.mkdir(parents=True, exist_ok=True)
-                            source = tf.extractfile(member)
-                            if source is not None:
-                                member_path.write_bytes(source.read())
-            except (OSError, tarfile.TarError, subprocess.SubprocessError) as exc:
-                return make_proof("ZIZMOR", ctx, result="FAIL", detail=f"cannot unpack base workflows: {exc}")
-            target = Path(tmp) / ".github" / "workflows"
-            workflows = sorted(str(p.relative_to(Path(tmp))) for p in target.rglob("*") if p.is_file()) if target.exists() else []
-            if not workflows:
-                return _skip("ZIZMOR", ctx, "base revision has no GitHub Actions workflow files")
-            command = [binary, "--format", "json", *workflows]
-            proc = run_process(command, ctx=ctx, cwd=tmp, timeout=180)
-    else:
-        command = [binary, "--format", "json", *workflow_changes]
-        proc = run_process(command, ctx=ctx, cwd=worktree, timeout=180)
     version = tool_version("zizmor", ctx=ctx, cwd=worktree)
-    if proc["error"]:
-        return _tool_failure("ZIZMOR", ctx, proc, "zizmor", version, proc["error"])
-    # zizmor has emitted both a top-level JSON report and JSON-lines in some
-    # releases; nonzero exit is authoritative, and valid JSON is retained.
-    parsed, parse_error = _json_from_output(proc["stdout"])
-    finding_count = 0
-    if isinstance(parsed, dict):
-        finding_count = len(parsed.get("findings") or parsed.get("results") or [])
-    elif isinstance(parsed, list):
-        finding_count = len(parsed)
-    if proc["exit"] not in (0,):
-        return make_proof(
-            "ZIZMOR", ctx, result="FAIL", command=command, tool_name="zizmor",
-            version=version, exit_code=proc["exit"],
-            stdout=proc["stdout"] + proc["stderr"],
-            detail=f"zizmor exited {proc['exit']} with {finding_count} reported finding(s)",
-        )
-    if parse_error:
-        return _tool_failure("ZIZMOR", ctx, proc, "zizmor", version, f"expected JSON output: {parse_error}")
+    scans: dict[str, list[dict]] = {}
+    with tempfile.TemporaryDirectory(prefix="factory-zizmor-base-") as base_tmp, \
+            tempfile.TemporaryDirectory(prefix="factory-zizmor-head-") as head_tmp:
+        base_tree = Path(base_tmp)
+        head_tree = Path(head_tmp)
+        base_files, base_error = _materialize_workflows(ctx, base, base_tree)
+        if base_error:
+            return make_proof(
+                "ZIZMOR", ctx, result="FAIL", command=base_error["command"], tool_name="git",
+                version=tool_version("git", ctx=ctx), exit_code=base_error["exit"],
+                stdout=base_error["stdout"], detail=base_error["detail"],
+            )
+        head_files, head_error = _materialize_workflows(ctx, head, head_tree)
+        if head_error:
+            return make_proof(
+                "ZIZMOR", ctx, result="FAIL", command=head_error["command"], tool_name="git",
+                version=tool_version("git", ctx=ctx), exit_code=head_error["exit"],
+                stdout=head_error["stdout"], detail=head_error["detail"],
+            )
+        if not head_files:
+            reason = "no .github/workflows exists at head; nothing to scan"
+            return make_proof(
+                "ZIZMOR", ctx, result="SKIP", tool_name="zizmor", version=version,
+                stdout=canonical_json({"skip_reason": reason}), detail=reason,
+            )
+        for label, tree, files in (
+            ("base", base_tree, base_files),
+            ("head", head_tree, head_files),
+        ):
+            fingerprints, scan_error = _scan_workflows(ctx, binary, tree, files, label)
+            if scan_error:
+                proc = scan_error["proc"]
+                if scan_error["kind"] == "error":
+                    return _tool_failure("ZIZMOR", ctx, proc, "zizmor", version, proc["error"])
+                if scan_error["kind"] == "parse":
+                    return _tool_failure(
+                        "ZIZMOR", ctx, proc, "zizmor", version,
+                        f"expected JSON output from {label} scan: {scan_error['error']}",
+                    )
+                return make_proof(
+                    "ZIZMOR", ctx, result="FAIL", command=scan_error["command"],
+                    tool_name="zizmor", version=version, exit_code=proc["exit"],
+                    stdout=proc["stdout"] + proc["stderr"],
+                    detail=(
+                        f"zizmor exited {proc['exit']} on the {label} workflow scan "
+                        "without reporting a JSON payload"
+                    ),
+                )
+            scans[label] = fingerprints
+    base_findings = scans.get("base", [])
+    head_findings = scans.get("head", [])
+    base_keys = {canonical_json(item) for item in base_findings}
+    new_findings = [item for item in head_findings if canonical_json(item) not in base_keys]
+    residual_findings = [item for item in head_findings if canonical_json(item) in base_keys]
+    result = "FAIL" if new_findings else "PASS"
+
+    def _labels(items: list[dict], limit: int = 10) -> str:
+        names = [
+            f"{item['rule']}@{item['path']}:{item['line']}"
+            for item in items[:limit]
+        ]
+        text = ", ".join(names)
+        if len(items) > limit:
+            text += f" (+{len(items) - limit} more)"
+        return text
+
+    if new_findings:
+        detail = f"{len(new_findings)} new finding(s): {_labels(new_findings)}"
+    else:
+        detail = f"no new findings; {len(residual_findings)} pre-existing residual"
+        if residual_findings:
+            detail += f": {_labels(residual_findings)}"
+        if not workflow_changes:
+            detail += " (no workflow changes at head)"
+    if len(detail) > 1900:
+        detail = detail[:1880] + "..."
+    evidence_text = canonical_json({
+        "base_findings": base_findings,
+        "head_findings": head_findings,
+        "new_findings": new_findings,
+        "residual_findings": residual_findings,
+        "workflow_changes": workflow_changes,
+    })
+    artifacts: list[dict] = []
+    task_id = ctx.get("task_id")
+    if task_id:
+        try:
+            artifact_path = evidence_dir(str(task_id)) / "artifacts" / "ZIZMOR.json"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_text(evidence_text, encoding="utf-8")
+            artifacts = [{
+                "path": str(artifact_path),
+                "sha256": sha256(evidence_text),
+                "kind": "zizmor-fingerprints",
+            }]
+        except (FactoryError, OSError) as exc:
+            detail = (detail + f"; artifact write failed: {exc}")[:1900]
     return make_proof(
-        "ZIZMOR", ctx, result="PASS" if finding_count == 0 else "FAIL",
-        command=command, tool_name="zizmor", version=version,
-        exit_code=proc["exit"], stdout=proc["stdout"],
-        detail=f"zizmor scanned {'base' if base_scan else 'changed'} workflows; {finding_count} finding(s)",
+        "ZIZMOR", ctx, result=result, tool_name="zizmor", version=version,
+        exit_code=1 if new_findings else 0,
+        stdout=evidence_text,
+        artifacts=artifacts,
+        detail=detail,
     )
 
 

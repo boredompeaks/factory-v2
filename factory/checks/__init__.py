@@ -359,6 +359,7 @@ from . import dast as _dast  # noqa: E402
 CHECKS = {
     "SCOPE": _static.check_scope,
     "SUITE": _tests.check_suite,
+    "SUITE_PYTEST": _tests.check_suite_pytest,
     "TEST_SET": _tests.check_test_set,
     "TEST_INFRA": _static.check_test_infra,
     "BASE_FAIL_HEAD_PASS": _tests.check_base_fail_head_pass,

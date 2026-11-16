@@ -15,7 +15,7 @@
     {
       "id": "ROR",
       "name": "relational_operator_replacement",
-      "description": "Replace < with <=, > with >=, == with !=.",
+      "description": "Replace < with <=, > with >=, == with !=, in with not in, not in with in, is with is not, is not with is.",
       "applies_to": "python",
       "enabled_tiers": [
         "none",
@@ -37,7 +37,18 @@
     {
       "id": "NEG",
       "name": "condition_negation",
-      "description": "Negate an if or while condition.",
+      "description": "Remove a unary not (for example, `not x` becomes `x`).",
+      "applies_to": "python",
+      "enabled_tiers": [
+        "none",
+        "high",
+        "max"
+      ]
+    },
+    {
+      "id": "CR",
+      "name": "boolean_constant_replacement",
+      "description": "Swap True and False.",
       "applies_to": "python",
       "enabled_tiers": [
         "none",

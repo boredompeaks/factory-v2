@@ -75,6 +75,9 @@ services:
     networks: ["k1-internal"]
     tmpfs:
       - /var/lib/postgresql/data:rw,nosuid,nodev,size=96m
+      # The entrypoint writes its unix socket here before dropping privileges;
+      # without a writable /var/run/postgresql it fails on a fresh host.
+      - /var/run/postgresql:rw,noexec,nosuid,nodev,size=8m
     # Disposable tmpfs data: fsync cannot make it durable, so fsync-off removes
     # the I/O cost without weakening anything the sandbox promises.
     command:

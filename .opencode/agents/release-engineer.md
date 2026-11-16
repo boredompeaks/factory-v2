@@ -4,6 +4,7 @@ mode: subagent
 model: opencode-go/glm-5.3-flash#high
 permissions:
   - { action: "*", resource: "*", effect: deny }
+  - { action: subagent, resource: "*", effect: deny }
   - { action: read, resource: "*", effect: allow }
   - { action: grep, resource: "*", effect: allow }
   - { action: glob, resource: "*", effect: allow }
@@ -56,4 +57,4 @@ Release notes are operational: what moved, what was verified, what is still unkn
 
 ## Routing invariant
 
-The orchestrator routes; I return to it; I do not message peers. The auditor is the only subagent allowed a child: auditor -> hacker, only when the SOP says so; the hacker's result returns through the auditor to the orchestrator. I have no children, and no other parent/child edge exists. My result is a release record, and the orchestrator decides what happens next.
+The orchestrator routes; I return to it; I do not message peers. The auditor is the only subagent allowed a child: auditor -> hacker, spawned immediately after orientation while the auditor runs its own audit in parallel; the hacker's result returns through the auditor to the orchestrator. I have no children, and no other parent/child edge exists. My result is a release record, and the orchestrator decides what happens next.

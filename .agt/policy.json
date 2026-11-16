@@ -21,7 +21,7 @@
       "webfetch",
       "websearch",
       "skill",
-      "task",
+      "subagent",
       "execute"
     ],
     "blockedTools": [],

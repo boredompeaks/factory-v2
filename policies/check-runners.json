@@ -1,5 +1,30 @@
 {
   "version": 1,
+  "suite_runner": {
+    "canonical": "backend/venv/bin/python manage.py test",
+    "diagnostic": "pytest",
+    "python_candidates": [
+      "backend/venv/bin/python",
+      "backend/venv/bin/python3",
+      "backend/.venv/bin/python",
+      ".venv/bin/python",
+      "venv/bin/python"
+    ],
+    "manage_py_candidates": [
+      "backend/manage.py",
+      "manage.py"
+    ],
+    "settings_module": "config.settings",
+    "pythonpath": "backend",
+    "sqlite_url": "sqlite:///test-db.sqlite3",
+    "pytest_rootdir": "backend",
+    "notes": [
+      "The canonical runner is `backend/venv/bin/python manage.py test --noinput` with cwd <tree>/backend, DJANGO_DEBUG=true, DJANGO_SETTINGS_MODULE=config.settings, PYTHONPATH=<tree>/backend, and an explicit DATABASE_URL.",
+      "Never set DJANGO_ENV for the suite env: a settings test asserts the ambient name is absent.",
+      "SUITE_PYTEST is a shadow diagnostic only; its result is recorded but never blocks the gate.",
+      "The pytest diagnostic runs from <tree>/backend with an explicit --rootdir and target so the per-worktree pytest.ini shim is not required."
+    ]
+  },
   "ci_self_audit": [
     "SUITE",
     "CHANGELOG",
@@ -42,6 +67,19 @@
         "SUITE_FAILURE"
       ],
       "shadow": false
+    },
+    "SUITE_PYTEST": {
+      "runners": [
+        "builder",
+        "auditor",
+        "ci"
+      ],
+      "required_in_ci": false,
+      "scope": "full",
+      "emits": [
+        "SUITE_FAILURE"
+      ],
+      "shadow": true
     },
     "TEST_SET": {
       "runners": [

@@ -195,6 +195,30 @@ def _k1_env() -> dict[str, str]:
     return env
 
 
+def _k1_lease_public(lease: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Lease data safe to print: the postgres password never leaves the state dir."""
+    if not lease:
+        return lease
+    return {key: value for key, value in lease.items() if key != "postgres_password"}
+
+
+def _k1_redact(value: str, password: str | None) -> str:
+    return value.replace(password, "[REDACTED]") if password else value
+
+
+def _k1_compose_env() -> dict[str, str]:
+    """Compose interpolation env for K1 commands that never use the DB password.
+
+    Compose still validates the required ${POSTGRES_PASSWORD} variable for
+    status/down, so supply a placeholder when the caller has not set one. The
+    real password stays in the lease and is only used by up/exec.
+    """
+    environment = os.environ.copy()
+    if not environment.get("POSTGRES_PASSWORD"):
+        environment["POSTGRES_PASSWORD"] = "k1-local-unused"
+    return environment
+
+
 def _k1(args: argparse.Namespace) -> dict[str, Any]:
     task_id = args.task_id or os.environ.get("FACTORY_TASK_ID")
     if args.action == "status" and args.all_lanes and not args.lane and not task_id:
@@ -213,17 +237,17 @@ def _k1(args: argparse.Namespace) -> dict[str, Any]:
             leases = []
             for path in sorted(k1_lease_dir().glob("*.json")):
                 try:
-                    leases.append(json.loads(path.read_text(encoding="utf-8")))
+                    leases.append(_k1_lease_public(json.loads(path.read_text(encoding="utf-8"))))
                 except (OSError, ValueError):
                     continue
             return {"result": "PASS", "leases": leases}
         lease = get_k1_lease(lane)
         cmd = ["docker", "compose", "-p", project, "-f", str(compose), "ps", "--format", "json"]
-        result = run(cmd, cwd=REPO_ROOT)
+        result = run(cmd, cwd=REPO_ROOT, env=_k1_compose_env())
         return {
             "result": "PASS" if result.returncode == 0 else "FAIL",
             "lane": lane,
-            "lease": lease,
+            "lease": _k1_lease_public(lease),
             "stdout": result.stdout,
             "stderr": result.stderr,
             "exit": result.returncode,
@@ -233,7 +257,12 @@ def _k1(args: argparse.Namespace) -> dict[str, Any]:
         if lease and lease.get("status") == "up":
             raise FactoryError(f"K1_SLOT_BUSY: lane {lane} already has run {lease.get('run_id')}")
         run_id = args.run_id or f"{task_id or 'manual'}-{secrets.token_hex(4)}"
-        lease = acquire_k1_slot(lane, run_id)
+        password = (
+            os.environ.get("FACTORY_K1_POSTGRES_PASSWORD")
+            or os.environ.get("POSTGRES_PASSWORD")
+            or secrets.token_urlsafe(24)
+        )
+        lease = acquire_k1_slot(lane, run_id, password=password)
         task_worktree = load_task(task_id).get("worktree") if task_id else str(Path.cwd())
         environment = os.environ.copy()
         environment.update(
@@ -241,7 +270,7 @@ def _k1(args: argparse.Namespace) -> dict[str, Any]:
                 "K1_BASE": str(Path(args.base or task_worktree).resolve()),
                 "K1_HEAD": str(Path(args.head or task_worktree).resolve()),
                 "K1_ARTIFACTS": str((evidence_dir(task_id) if task_id else Path.cwd() / ".factory-evidence") / "artifacts"),
-                "POSTGRES_PASSWORD": secrets.token_urlsafe(24),
+                "POSTGRES_PASSWORD": password,
             }
         )
         Path(environment["K1_ARTIFACTS"]).mkdir(parents=True, exist_ok=True)
@@ -249,26 +278,28 @@ def _k1(args: argparse.Namespace) -> dict[str, Any]:
         result = run(command, cwd=REPO_ROOT, env=environment)
         if result.returncode:
             release_k1_slot(lane)
+        stdout = _k1_redact(result.stdout, password)
+        stderr = _k1_redact(result.stderr, password)
         proof = _runtime_proof(
             check_id="K1_UP",
             task_id=task_id,
             result="PASS" if result.returncode == 0 else "FAIL",
-            detail=result.stderr.strip() or ("K1 started" if result.returncode == 0 else "K1 start failed"),
+            detail=stderr.strip() or ("K1 started" if result.returncode == 0 else "K1 start failed"),
             command=command,
-            stdout=result.stdout,
+            stdout=stdout,
             exit_code=result.returncode,
         )
         return {
             "result": "PASS" if result.returncode == 0 else "FAIL",
             "lane": lane,
-            "lease": lease if result.returncode == 0 else None,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "lease": _k1_lease_public(lease) if result.returncode == 0 else None,
+            "stdout": stdout,
+            "stderr": stderr,
             "proof": proof,
         }
     if args.action == "down":
         command = ["docker", "compose", "-p", project, "-f", str(compose), "down", "--remove-orphans"]
-        result = run(command, cwd=REPO_ROOT)
+        result = run(command, cwd=REPO_ROOT, env=_k1_compose_env())
         released = release_k1_slot(lane) if result.returncode == 0 else None
         proof = _runtime_proof(
             check_id="K1_DOWN",
@@ -282,7 +313,7 @@ def _k1(args: argparse.Namespace) -> dict[str, Any]:
         return {
             "result": "PASS" if result.returncode == 0 else "FAIL",
             "lane": lane,
-            "released_lease": released,
+            "released_lease": _k1_lease_public(released),
             "stdout": result.stdout,
             "stderr": result.stderr,
             "proof": proof,
@@ -290,25 +321,36 @@ def _k1(args: argparse.Namespace) -> dict[str, Any]:
     lease = get_k1_lease(lane)
     if not lease or lease.get("status") != "up":
         raise FactoryError(f"K1 is not running for lane {lane}; run `factory k1 up --lane {lane}` first")
+    password = lease.get("postgres_password")
+    if not isinstance(password, str):
+        password = None
     command = ["docker", "compose", "-p", project, "-f", str(compose), "exec", "-T"]
+    if password:
+        command.extend(["-e", f"POSTGRES_PASSWORD={password}"])
     command.append("app")
     if not args.command:
         raise FactoryError("k1 exec requires a command after --")
     command.extend(args.command)
-    result = run(command, cwd=REPO_ROOT)
+    environment = _k1_compose_env()
+    if password:
+        environment["POSTGRES_PASSWORD"] = password
+    result = run(command, cwd=REPO_ROOT, env=environment)
+    stdout = _k1_redact(result.stdout, password)
+    stderr = _k1_redact(result.stderr, password)
+    display_command = [_k1_redact(part, password) for part in command]
     proof = _runtime_proof(
         check_id="K1_EXEC",
         task_id=task_id,
         result="PASS" if result.returncode == 0 else "FAIL",
-        detail=result.stderr.strip() or f"container command exited {result.returncode}",
-        command=command,
-        stdout=result.stdout,
+        detail=stderr.strip() or f"container command exited {result.returncode}",
+        command=display_command,
+        stdout=stdout,
         exit_code=result.returncode,
     )
     return {
         "result": "PASS" if result.returncode == 0 else "FAIL",
-        "stdout": result.stdout,
-        "stderr": result.stderr,
+        "stdout": stdout,
+        "stderr": stderr,
         "exit": result.returncode,
         "proof": proof,
     }
@@ -530,6 +572,22 @@ def build_parser() -> argparse.ArgumentParser:
     release_parser.add_argument("--task-id", dest="task_id_option")
     release_parser.add_argument("--repo", help="clean integration worktree (defaults to cwd)")
     release_parser.add_argument("--dry-run", action="store_true")
+    release_parser.add_argument(
+        "--allow-deletions",
+        action="store_true",
+        help="approve a divergent branch that deletes test files or many lines",
+    )
+    release_parser.add_argument(
+        "--owner-approval",
+        help="recorded owner approval, required with --allow-deletions",
+    )
+    release_parser.add_argument(
+        "--deletion-scope",
+        action="append",
+        default=None,
+        metavar="GLOB",
+        help="path glob covering deletions; repeat for multiple scopes (requires --allow-deletions)",
+    )
     _add_json(release_parser)
     release_parser.set_defaults(handler=_release)
 
@@ -574,6 +632,9 @@ def _release(args: argparse.Namespace) -> dict[str, Any]:
         _task_id(args.task_id or args.task_id_option),
         repo=args.repo,
         dry_run=args.dry_run,
+        allow_deletions=args.allow_deletions,
+        owner_approval=args.owner_approval,
+        deletion_scope=args.deletion_scope,
     )
 
 

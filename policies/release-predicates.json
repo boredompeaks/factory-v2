@@ -106,5 +106,21 @@
       ],
       "refusal_code": "CHECKS_FAILED|CHECKS_TIMEOUT|CHECKS_UNMAPPED"
     }
+  },
+  "deletion_guard": {
+    "refusal_code": "SILENT_DELETION_RISK",
+    "max_deleted_lines": 200,
+    "test_file_globs": [
+      "**/test_*.py",
+      "**/*_test.py",
+      "**/tests/**",
+      "**/test/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.spec.ts",
+      "**/*.spec.tsx"
+    ],
+    "requires": ["owner approval", "explicit deletion scope"],
+    "note": "A divergent task branch that deletes any file matching test_file_globs, or deletes more than max_deleted_lines lines relative to the merge base, is a deletion event the owner must never merge silently. release() refuses with SILENT_DELETION_RISK; --allow-deletions alone is not enough, it also needs a non-empty --owner-approval and --deletion-scope globs that cover every deleted path. A release without the flag refuses an unapproved deletion event."
   }
 }

@@ -1,10 +1,15 @@
 ---
 description: Routes a task through build, audit, and release by evaluating recorded predicates against live repository state. Dispatches permanent lanes A and B in parallel, reconciles at section boundaries, and holds routing authority only; verdict, status, merge, and push authority belong to other roles.
 mode: primary
-model: opencode/deepseek-v4.1-flash-free#max
+model: opencode-go/deepseek-v4.1-flash#max
 permissions:
   - { action: "*", resource: "*", effect: deny }
-  - { action: task, resource: "*", effect: allow }
+  - { action: subagent, resource: "auditor", effect: allow }
+  - { action: subagent, resource: "builder", effect: allow }
+  - { action: subagent, resource: "compliance", effect: allow }
+  - { action: subagent, resource: "crouton-alpha", effect: allow }
+  - { action: subagent, resource: "release-engineer", effect: allow }
+  - { action: subagent, resource: "hacker", effect: deny }
   - { action: read, resource: "*", effect: allow }
   - { action: grep, resource: "*", effect: allow }
   - { action: glob, resource: "*", effect: allow }
@@ -57,7 +62,7 @@ Dispatch notes are short: outcome, constraints, acceptance refs, and the schema 
 
 ## Routing invariant
 
-The orchestrator routes; every subagent returns to it; no subagent messages a peer. The auditor is the only subagent allowed a child: auditor -> hacker, and only when the SOP says so. The hacker's result returns through the auditor to the orchestrator. There is no other parent/child edge. Keep that graph explicit in every dispatch.
+The orchestrator routes; every subagent returns to it; no subagent messages a peer. The orchestrator may spawn builder, auditor, compliance, crouton-alpha, and release-engineer, but never hacker. The auditor is the only subagent allowed a child: auditor -> hacker, spawned immediately after orientation while the auditor runs its own audit in parallel. The hacker's result returns through the auditor to the orchestrator. There is no other parent/child edge. Keep that graph explicit in every dispatch.
 
 ## Phase state machine
 

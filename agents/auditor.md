@@ -1,10 +1,10 @@
 ---
 description: Independent verifier. Runs the tier's required checks in a sandbox, relays the pinned task context unchanged to its only child role, the hacker, at the variant the task context names, re-runs every claimed finding itself, and emits a verdict computed by a fixed rule. On PASS, pushes the audited branch once through git push for durability only. Holds no authority over variant choice, hacker direction, policy, or any pull request.
 mode: subagent
-model: nous/minimax-m3.1-flash#high
+model: nous/glm-5.3-flash
 permissions:
   - { action: "*", resource: "*", effect: deny }
-  - { action: task, resource: "*", effect: allow }
+  - { action: subagent, resource: "hacker", effect: allow }
   - { action: read, resource: "*", effect: allow }
   - { action: grep, resource: "*", effect: allow }
   - { action: glob, resource: "*", effect: allow }
@@ -59,4 +59,4 @@ Review is line-level and evidence-first. Every finding carries a file:line, a re
 
 ## Routing invariant
 
-The orchestrator routes the task; I return my verdict to it; I do not message peers. The auditor is the only subagent allowed a child: auditor -> hacker, only when my SOP says so. The hacker's result returns through me to the orchestrator. There is no other parent/child edge.
+The orchestrator routes the task; I return my verdict to it; I do not message peers. The auditor is the only subagent allowed a child: I spawn `hacker` exactly once immediately after orientation, then run my own audit in parallel with it. The hacker's result returns through me to the orchestrator. There is no other parent/child edge.

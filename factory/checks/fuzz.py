@@ -60,13 +60,14 @@ def check_schema_fuzz(ctx: dict) -> dict:
             schema = str((worktree / str(explicit_spec)).resolve())
         else:
             available = executable("schemathesis") or executable("st")
+            reason = f"configured OpenAPI spec does not exist or is not reachable: {explicit_spec}"
             return make_proof(
                 "SCHEMA_FUZZ", ctx, result="TOOL_ABSENT", seed=seed,
                 command=["schemathesis", "run", str(explicit_spec)],
                 tool_name="schemathesis",
                 version=tool_version(available, ctx=ctx) if available else "absent",
-                detail=f"configured OpenAPI spec does not exist or is not reachable: {explicit_spec}",
-                stdout=f"missing spec: {explicit_spec}",
+                detail=canonical_json({"skip_reason": reason}),
+                stdout=canonical_json({"skip_reason": reason}),
             )
     elif base_url:
         source = str(policy.get("schema_source") or "runtime-openapi:/openapi.json")
@@ -74,22 +75,27 @@ def check_schema_fuzz(ctx: dict) -> dict:
         schema = urljoin(str(base_url).rstrip("/") + "/", suffix.lstrip("/"))
     else:
         available = executable("schemathesis") or executable("st")
+        reason = (
+            "no live base URL or OpenAPI spec was supplied "
+            "(FACTORY_SCHEMA_BASE_URL / FACTORY_OPENAPI_SPEC)"
+        )
         return make_proof(
             "SCHEMA_FUZZ", ctx, result="TOOL_ABSENT", seed=seed,
             command=["schemathesis", "run"],
             tool_name="schemathesis",
             version=tool_version(available, ctx=ctx) if available else "absent",
-            detail="no live base URL or OpenAPI spec was supplied (FACTORY_SCHEMA_BASE_URL / FACTORY_OPENAPI_SPEC)",
-            stdout="schema source unavailable",
+            detail=canonical_json({"skip_reason": reason}),
+            stdout=canonical_json({"skip_reason": reason}),
         )
     binary = executable("schemathesis") or executable("st")
     if not binary:
+        reason = "schemathesis binary is not on PATH"
         return make_proof(
             "SCHEMA_FUZZ", ctx, result="TOOL_ABSENT", seed=seed,
             command=["schemathesis", "run", schema],
             tool_name="schemathesis", version="absent",
-            detail="schemathesis binary is not on PATH",
-            stdout="schemathesis unavailable",
+            detail=canonical_json({"skip_reason": reason}),
+            stdout=canonical_json({"skip_reason": reason}),
         )
     max_examples = min(max(int(policy.get("max_examples", 200)), 1), 1000)
     workers = min(max(int(policy.get("workers", 1)), 1), 8)

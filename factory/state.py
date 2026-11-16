@@ -145,7 +145,7 @@ def k1_project(lane: str) -> str:
     return f"factory-k1-{cleaned.strip('-') or 'lane'}"
 
 
-def acquire_k1_slot(lane: str, run_id: str) -> dict[str, Any]:
+def acquire_k1_slot(lane: str, run_id: str, password: str | None = None) -> dict[str, Any]:
     directory = k1_lease_dir()
     directory.mkdir(parents=True, exist_ok=True)
     with locked_file(directory / ".lock"):
@@ -170,6 +170,8 @@ def acquire_k1_slot(lane: str, run_id: str) -> dict[str, Any]:
             "status": "up",
             "started_at": int(time.time()),
         }
+        if password is not None:
+            lease["postgres_password"] = password
         write_json(directory / f"{hashlib.sha256(lane.encode()).hexdigest()[:24]}.json", lease)
         return lease
 

@@ -38,6 +38,26 @@
         "SUITE_FAILURE"
       ]
     },
+    "SUITE_PYTEST": {
+      "title": "Pytest diagnostic suite",
+      "min_tier": "none",
+      "predicate_kind": "diagnostic",
+      "predicate": "The legacy pytest suite is recorded for diagnostics only; its result is never a gate blocker and never a pass claim for SUITE.",
+      "blind_spots": [
+        "The pytest run is a second opinion and cannot substitute for the canonical Django suite.",
+        "Known engine-only pytest failures are recorded as diagnostics, not as gate evidence."
+      ],
+      "runners": [
+        "builder",
+        "auditor",
+        "ci"
+      ],
+      "required_in_ci": false,
+      "fail_action": "RECORD",
+      "class_tags": [
+        "SUITE_FAILURE"
+      ]
+    },
     "TEST_SET": {
       "title": "Test set integrity",
       "min_tier": "none",

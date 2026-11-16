@@ -1,4 +1,4 @@
-"""Bounded AOR/ROR/LCR AST mutation runner."""
+"""Bounded AOR/ROR/LCR/NEG/CR AST mutation runner."""
 
 from __future__ import annotations
 
@@ -34,8 +34,13 @@ _ROR = {
     ast.Lt: ast.LtE,
     ast.Gt: ast.GtE,
     ast.Eq: ast.NotEq,
+    ast.In: ast.NotIn,
+    ast.NotIn: ast.In,
+    ast.Is: ast.IsNot,
+    ast.IsNot: ast.Is,
 }
 _LCR = {ast.And: ast.Or, ast.Or: ast.And}
+_IMPLEMENTED_OPERATORS = frozenset({"AOR", "ROR", "LCR", "NEG", "CR"})
 
 
 def _parse_hunks(diff: str) -> tuple[dict[str, dict[int, int]], dict[str, int]]:
@@ -104,6 +109,20 @@ def _operator_sites(tree: ast.AST, changed_line_hunks: dict[int, int]) -> list[d
                         "replacement": _ROR[type(operator)](), "hunk": matching[0],
                         "column": getattr(node, "col_offset", 0),
                     })
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            # NEG removes the unary `not`, leaving its operand in place.
+            sites.append({
+                "node": node, "kind": "NEG", "operator_index": 0,
+                "replacement": node.operand, "hunk": matching[0],
+                "column": getattr(node, "col_offset", 0),
+            })
+        elif isinstance(node, ast.Constant) and isinstance(node.value, bool):
+            # CR swaps boolean constants: True <-> False.
+            sites.append({
+                "node": node, "kind": "CR", "operator_index": 0,
+                "replacement": ast.Constant(value=not node.value), "hunk": matching[0],
+                "column": getattr(node, "col_offset", 0),
+            })
     sites.sort(
         key=lambda item: (
             getattr(item["node"], "lineno", 0),
@@ -140,6 +159,19 @@ class _ReplaceOne(ast.NodeTransformer):
             return node
         return self.generic_visit(node)
 
+    def visit_UnaryOp(self, node):
+        if node is self.site["node"] and self.site["kind"] == "NEG":
+            self.changed = True
+            return node.operand
+        return self.generic_visit(node)
+
+    def visit_Constant(self, node):
+        if node is self.site["node"] and self.site["kind"] == "CR":
+            node.value = not node.value
+            self.changed = True
+            return node
+        return self.generic_visit(node)
+
 
 def _mutate(source: str, site: dict) -> str | None:
     try:
@@ -169,6 +201,14 @@ def _mutate(source: str, site: dict) -> str | None:
                 break
         elif wanted_kind == "ROR" and isinstance(node, ast.Compare):
             if wanted_index < len(node.ops) and type(node.ops[wanted_index]) in _ROR:
+                candidate = node
+                break
+        elif wanted_kind == "NEG" and isinstance(node, ast.UnaryOp):
+            if isinstance(node.op, ast.Not):
+                candidate = node
+                break
+        elif wanted_kind == "CR" and isinstance(node, ast.Constant):
+            if isinstance(node.value, bool):
                 candidate = node
                 break
     if candidate is None:
@@ -222,7 +262,7 @@ def check_mutation(ctx: dict) -> dict:
         return make_proof(
             "MUTATION", ctx, result="SKIP",
             command=["factory-mutation-runner"], tool_name="factory-mutation-runner",
-            detail="no changed non-test Python source files; AOR/ROR/LCR are not applicable",
+            detail="no changed non-test Python source files; automatic mutation operators are not applicable",
             stdout="no changed Python source",
         )
 
@@ -237,9 +277,9 @@ def check_mutation(ctx: dict) -> dict:
         str(item.get("id")) for item in policy.get("operators", [])
         if isinstance(item, dict) and tier in item.get("enabled_tiers", [])
     }
-    operators &= {"AOR", "ROR", "LCR"}
+    operators &= _IMPLEMENTED_OPERATORS
     if not operators:
-        return make_proof("MUTATION", ctx, result="FAIL", detail=f"no AOR/ROR/LCR operators enabled for tier {tier}")
+        return make_proof("MUTATION", ctx, result="FAIL", detail=f"no implemented mutation operators enabled for tier {tier}")
 
     diff_proc_full, diff_error = get_diff(ctx, 0)
     if diff_error:
@@ -282,7 +322,7 @@ def check_mutation(ctx: dict) -> dict:
             "MUTATION", ctx, result="SKIP", command=["factory-mutation-runner", "--max-mutants", "20"],
             tool_name="factory-mutation-runner", version="1.0", exit_code=0,
             stdout=canonical_json({"changed_python": python_paths, "mutants": 0}),
-            detail="no AOR/ROR/LCR operator occurs in a changed hunk; mutation is not applicable",
+            detail="no supported mutation operator occurs in a changed hunk; mutation is not applicable",
         )
 
     env = ctx.get("env") if isinstance(ctx.get("env"), dict) else {}
@@ -303,8 +343,9 @@ def check_mutation(ctx: dict) -> dict:
         selected.append(item)
     truncated = len(selected) != len(candidates)
 
-    # Every affected hunk is accounted for, including a hunk without a
-    # supported operator. Policy min_mutants_per_hunk is fail-closed.
+    # Only hunks that actually expose a supported operator can carry a test
+    # gap. Hunks without one are recorded as not-applicable, not failed; a file
+    # with no supported operator at all already took the SKIP path above.
     source_hunks = {
         (path, hunk)
         for path, count in hunk_counts.items()
@@ -320,9 +361,17 @@ def check_mutation(ctx: dict) -> dict:
     for item in selected:
         key = (item["path"], int(item["hunk"]))
         selected_by_hunk[key] = selected_by_hunk.get(key, 0) + 1
+    mutatable_hunks = {
+        (path, hunk)
+        for path, hunk in source_hunks
+        if mutatable_by_hunk.get((path, hunk), 0) > 0
+    }
+    not_applicable_hunks = [
+        f"{path}#{hunk}" for path, hunk in sorted(source_hunks - mutatable_hunks)
+    ]
     hunk_errors = [
         f"{path} hunk {hunk}: {selected_by_hunk.get((path, hunk), 0)} mutants, minimum {min_per_hunk}"
-        for path, hunk in sorted(source_hunks)
+        for path, hunk in sorted(mutatable_hunks)
         if selected_by_hunk.get((path, hunk), 0) < min_per_hunk
     ]
 
@@ -366,7 +415,10 @@ def check_mutation(ctx: dict) -> dict:
         # killed by an unrelated environment/test failure.
         baseline = run_process(
             pytest_args, ctx=ctx, cwd=sandbox, timeout=min(timeout_seconds, 90),
-            env=_test_env(sandbox, ctx, "sqlite"),
+            env=_test_env(
+                sandbox, ctx, "sqlite",
+                debug=True, sqlite_url="sqlite:///test-db.sqlite3",
+            ),
         )
         if baseline["error"]:
             return make_proof(
@@ -413,7 +465,13 @@ def check_mutation(ctx: dict) -> dict:
             proc = run_process(
                 pytest_args, ctx=ctx, cwd=sandbox,
                 timeout=max(1, min(90, remaining)),
-                env={**_test_env(sandbox, ctx, "sqlite"), "FACTORY_MUTANT_INDEX": str(index)},
+                env={
+                    **_test_env(
+                        sandbox, ctx, "sqlite",
+                        debug=True, sqlite_url="sqlite:///test-db.sqlite3",
+                    ),
+                    "FACTORY_MUTANT_INDEX": str(index),
+                },
             )
             mutated_path.write_text(original, encoding="utf-8")
             if proc["timed_out"]:
@@ -480,6 +538,7 @@ def check_mutation(ctx: dict) -> dict:
             }
             for path, hunk in sorted(source_hunks)
         },
+        "not_applicable_hunks": not_applicable_hunks,
         "mutants": summaries,
         "errors": policy_errors,
     }
