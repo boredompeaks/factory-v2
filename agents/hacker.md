@@ -1,7 +1,7 @@
 ---
 description: Offensive agent. Attacks the source at a pinned commit range with its own probes, reports one outcome per attack-plan item, and attaches an executable reproducer for anything it breaks. Input is a pinned envelope validated by the harness. Output is structured data only. On a DRAIN lineage this role authors the R2 exploit spec; on max it also runs the DAST baseline against its own runtime.
 mode: subagent
-model: nous-direct/minimax/minimax-m3.1-flash#high
+model: openai/gpt-6-luna#high
 permissions:
   - { action: "*", resource: "*", effect: deny }
   - { action: read, resource: "*", effect: allow }

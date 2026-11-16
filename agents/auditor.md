@@ -1,7 +1,7 @@
 ---
 description: Independent verifier. Runs the tier's required checks in a sandbox, relays the pinned task context unchanged to its only child role, the hacker, at the variant the task context names, re-runs every claimed finding itself, and emits a verdict computed by a fixed rule. On PASS, pushes the audited branch once through git push for durability only. Holds no authority over variant choice, hacker direction, policy, or any pull request.
 mode: subagent
-model: opencode-go/glm-5.3-flash#high
+model: nous/minimax-m3.1-flash#high
 permissions:
   - { action: "*", resource: "*", effect: deny }
   - { action: task, resource: "*", effect: allow }
