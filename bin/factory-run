@@ -56,13 +56,15 @@ command -v bwrap >/dev/null 2>&1 || {
 evidence_root=${FACTORY_EVIDENCE_ROOT:-"$HOME/.factory/evidence"}
 opencode_dir="$HOME/.local/share/opencode"
 cache_dir="$HOME/.cache"
-mkdir -p "$evidence_root" "$opencode_dir" "$cache_dir"
+mkdir -p "$evidence_root" "$opencode_dir" "$cache_dir" "$HOME/.factory" "$HOME/.config/opencode"
 
 args=(
   --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --dir /evidence
   --bind "$worktree" "$worktree"
   --ro-bind /home/boredompeaks/umairnlp /home/boredompeaks/umairnlp
   --ro-bind "$evidence_root" /evidence
+  --bind "$HOME/.factory" "$HOME/.factory"
+  --bind "$HOME/.config/opencode" "$HOME/.config/opencode"
   --bind "$opencode_dir" "$opencode_dir"
   --bind "$cache_dir" "$cache_dir"
   --die-with-parent --chdir "$worktree"
