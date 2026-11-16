@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bug-report.json",
+  "title": "bug-report",
+  "version": 1,
+  "description": "One auditor-owned bug-finding sweep report. Closed shape: additional properties are rejected at every object level.",
+  "$comment": "verdict is the coverage verdict directed for sweeps: COMPLETE, PARTIAL, or BLOCKED. It is not an auditor-verdict token. class must be a key in files/policies/severity.json; severity is looked up there by class and tier_of(locus), never supplied by the proposer, and the gate rejects an unknown class or a class/severity mismatch.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "report_id",
+    "batch_ids",
+    "capability_id",
+    "tree",
+    "auditor_session",
+    "flows_total",
+    "flows_tested",
+    "flows_not_run",
+    "findings",
+    "duplicates_merged",
+    "coverage_note",
+    "verdict"
+  ],
+  "properties": {
+    "schema": {
+      "const": "bug-report/1"
+    },
+    "report_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "batch_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Every bounded batch the one sweep dispatched, one entry per hacker child; a single report covers all of them."
+    },
+    "capability_id": {
+      "type": "string",
+      "pattern": "^cap_[A-Za-z0-9_-]{8,64}$"
+    },
+    "tree": {
+      "$ref": "#/$defs/git_sha"
+    },
+    "auditor_session": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The one auditor session that owned the sweep, its children, and the verification."
+    },
+    "flows_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "flows_tested": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "flows_not_run": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of inventoried flows with no execution. Validator enforces flows_tested + flows_not_run <= flows_total."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "duplicates_merged": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Candidates merged into another finding by class + locus + normalised symbol; not a finding count."
+    },
+    "coverage_note": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What was covered and what was not. Name the surfaces behind flows_not_run."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "BLOCKED"
+      ],
+      "description": "COMPLETE = every inventoried flow tested; PARTIAL = some flows NOT_RUN within budget; BLOCKED = the sweep could not run or evidence could not be produced."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "COMPLETE"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "flows_not_run": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "PARTIAL"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "flows_not_run": {
+            "minimum": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "git_sha": {
+      "type": "string",
+      "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finding_id",
+        "fingerprint",
+        "class",
+        "locus",
+        "severity",
+        "confidence",
+        "repro_ref",
+        "introduced",
+        "evidence_ref",
+        "verified_by"
+      ],
+      "properties": {
+        "finding_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "class": {
+          "type": "string",
+          "enum": [
+            "SCOPE_VIOLATION",
+            "SUITE_FAILURE",
+            "TEST_REMOVAL_UNCOVERED",
+            "TAUTOLOGICAL_ASSERTION",
+            "TEST_INFRA_CHANGE",
+            "NON_FALSIFIABLE",
+            "TEST_GAP",
+            "TEST_SET",
+            "CHANGELOG_GAP",
+            "SECRET_LEAK",
+            "CONVENTION_VIOLATION",
+            "CODE_SMELL",
+            "GATE_CONTROL_FAILURE",
+            "CONTROL_UNDERCOUNT",
+            "POLICY_DRIFT",
+            "ARCH_VIOLATION",
+            "WEAK_ORACLE",
+            "GUARD_REMOVED",
+            "AUTHZ_MATRIX_GAP",
+            "RACE_CONDITION",
+            "IDEMPOTENCY_VIOLATION",
+            "ERROR_HANDLING",
+            "MUTABLE_DEFAULT",
+            "FLAKY_TEST",
+            "SCHEMA_FUZZ_FAILURE",
+            "BOOT_FAIL_OPEN",
+            "CI_HARDENING",
+            "DAST_FINDING",
+            "AUTHZ_BYPASS",
+            "IDOR",
+            "TENANT_ESCAPE",
+            "MFA_BYPASS",
+            "MFA_REPLAY",
+            "REFUND_OVERSPEND",
+            "PRICE_TAMPER",
+            "MASS_ASSIGNMENT",
+            "PROMPT_INJECTION_ATTEMPT",
+            "GATEWAY_IN_ATOMIC",
+            "LOCK_ACROSS_NETWORK",
+            "MISSING_IDEMPOTENCY",
+            "UNSAFE_RMW",
+            "NONATOMIC_WATERMARK",
+            "BARE_EXCEPT",
+            "AGT_PARITY_MISMATCH",
+            "AGT_AUDIT_GAP",
+            "COMPLEXITY_HIGH",
+            "SECURITY_FINDING"
+          ],
+          "description": "Must be a key in files/policies/severity.json. An unknown class is rejected, never defaulted."
+        },
+        "locus": {
+          "type": "string",
+          "minLength": 1,
+          "description": "file:line or file:line-range plus the normalised symbol."
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "P1",
+            "P2",
+            "P3"
+          ],
+          "description": "Looked up from files/policies/severity.json by class and tier_of(locus); never proposer-supplied."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Auditor confidence that the verified repro proves the class; a number, not a prose label."
+        },
+        "repro_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "introduced": {
+          "type": "string",
+          "enum": [
+            "causal",
+            "proximity",
+            "preexisting"
+          ]
+        },
+        "evidence_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verified_by": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Auditor session id that re-ran the repro; only the auditor verifies."
+        }
+      }
+    }
+  }
+}

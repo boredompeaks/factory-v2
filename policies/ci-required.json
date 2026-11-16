@@ -1,0 +1,91 @@
+{
+  "version": 2,
+  "source": "files/policies/checks.json",
+  "field": "checks[required_in_ci == true]",
+  "generated": "scripts/generate_policies.py from checks.json; regenerate whenever any checks.<id>.required_in_ci changes. Do not hand-edit required_checks.",
+  "required_checks": [
+    "SUITE",
+    "CHANGELOG",
+    "SECRETS",
+    "CONVENTION",
+    "POLICY_DIGEST",
+    "ARCH",
+    "AUTHZ_MATRIX",
+    "BOOTTEST",
+    "ZIZMOR"
+  ],
+  "github_check_map": {
+    "SUITE": {
+      "source": "product-ci",
+      "names": [
+        "postgres"
+      ],
+      "command": "python -m coverage run manage.py test",
+      "note": "backend-tests.yml postgres job. Its no-backend-change sentinel reports the same context green without running the suite; a frontend-only or docs-only head is therefore not a SUITE observation."
+    },
+    "CHANGELOG": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python factory check --check CHANGELOG --input <evidence-json>",
+      "note": "backend-tests.yml's changelog_figures step checks row figures only; it does not implement the CHANGELOG diff-path coverage predicate."
+    },
+    "SECRETS": {
+      "source": "product-ci",
+      "names": [
+        "gitleaks"
+      ],
+      "command": "gitleaks/gitleaks-action (secret-scan.yml gitleaks job)"
+    },
+    "CONVENTION": {
+      "source": "product-ci",
+      "names": [
+        "lint"
+      ],
+      "command": "ruff check . && ruff format --check ."
+    },
+    "POLICY_DIGEST": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python files/tools/policy_digest.py --json"
+    },
+    "ARCH": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python files/tools/arch_check.py --repo <lane> --base <sha> --head <sha>"
+    },
+    "AUTHZ_MATRIX": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python files/tools/authz_matrix.py --repo <lane>"
+    },
+    "BOOTTEST": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python factory check --check BOOTTEST --input <evidence-json>"
+    },
+    "ZIZMOR": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python factory check --check ZIZMOR --input <evidence-json>"
+    },
+    "RADON": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python factory check --check RADON --tree <recorded-tree> --input <evidence-json>",
+      "note": "High/max factory gate: runs the K1-pinned radon 6.0.1 `radon cc -s -j` over changed non-test Python at the recorded tree. Not a product CI job; tool absence is NOT_RUN."
+    },
+    "BANDIT": {
+      "source": "factory-gate",
+      "names": [],
+      "command": "python factory check --check BANDIT --tree <recorded-tree> --input <evidence-json>",
+      "note": "High/max factory gate: runs the K1-pinned bandit 1.9.4 `bandit -r -f json -q` over changed non-test Python at the recorded tree. Not a product CI job; tool absence is NOT_RUN."
+    }
+  },
+  "covers": [
+    "files/policies/ci.json not_run_in_ci",
+    "files/policies/branch-protection.json required_checks",
+    "files/policies/check-runners.json ci_self_audit"
+  ],
+  "note": "The only required-CI set (F-71/A51). checks.json is the source of truth; this generated list, ci.json, branch-protection.json, and check-runners.json are validated against it by scripts/generate_policies.py --check.",
+  "github_check_map_note": "Hand-owned and validated by scripts/generate_policies.py: the generator never invents an entry. source=product-ci names real workflow job names read from the product worktrees and gh pr checks must observe each one SUCCESS; source=factory-gate is verified only by the factory's harness-computed check proofs; source=unmapped blocks the release. A missing mapped name is CHECKS_UNMAPPED, never a pass. High/max factory-gate ids that are not required_in_ci (RADON, BANDIT) are mapped here for the real command and never name a product GitHub job."
+}

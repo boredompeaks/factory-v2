@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "scope": "live",
+  "description": "The named predicates of the release role. This file is the only definition; the release SOPs cite an id and never restate the test. Every predicate is evaluated against live state at the moment of the step that cites it.",
+  "predicates": {
+    "Q-SIG": {
+      "definition": "The task context carries a recomputable proof_root, and every lane verdict supplied to the release carries a recomputable proof_root.",
+      "evidence": [
+        "task context: proof_root",
+        "recorded lane verdicts: proof_root"
+      ],
+      "refusal_code": "SIG_INVALID"
+    },
+    "Q-POLICY": {
+      "definition": "Every lane verdict's policy_digest and control_set_sha equal the live values in the gate-control record. A mismatch is drift and refuses the merge; it is never downgraded.",
+      "evidence": [
+        "recorded lane verdicts: policy_digest, control_set_sha",
+        "live gate-control record: policy_digest, control_set_sha"
+      ],
+      "refusal_code": "POLICY_DRIFT"
+    },
+    "Q-VERDICT": {
+      "definition": "Every lane in the release set has a recorded verdict with verdict PASS, and each verdict.task_id is named by the release capability.",
+      "evidence": [
+        "recorded lane verdicts: verdict, task_id, head, tree",
+        "release capability: lane set, capability ids"
+      ],
+      "refusal_code": "VERDICT_NOT_PASS"
+    },
+    "Q-LANEHEADS": {
+      "definition": "git state (head, tree) for origin/lane/a and origin/lane/b equal the head and tree of their respective PASS verdicts. A lane that moved after its audit is stale; it is not merged.",
+      "evidence": [
+        "git state: origin/lane/a head and tree",
+        "git state: origin/lane/b head and tree",
+        "recorded lane verdicts: head and tree"
+      ],
+      "refusal_code": "STATE_MISMATCH"
+    },
+    "Q-CLEAN": {
+      "definition": "The integration worktree is clean before reconcile: worktrees.reconcile refuses a dirty tree, and the harness samples the same cleanliness state before the push.",
+      "evidence": [
+        "git status on the spec-comp worktree",
+        "worktrees.reconcile refusal on a dirty tree"
+      ],
+      "refusal_code": "DIRTY_TREE"
+    },
+    "Q-STATE": {
+      "definition": "After reconcile, refs/heads/spec-comp and its tree equal the release head and tree returned by worktrees.reconcile, and the merged tree later equals the audited integration tree.",
+      "evidence": [
+        "worktrees.reconcile: reconciled head and tree",
+        "git state: refs/heads/spec-comp head and tree"
+      ],
+      "refusal_code": "STATE_MISMATCH"
+    },
+    "Q-METHOD": {
+      "definition": "The merge method is the merge commit set by files/policies/ci.json.merge_method; gh pr merge reads that value and passes --merge at the pinned head. There is no admin, auto-merge, squash, rebase, or bypass option. FF-only applies to lane sync, never to this promotion merge.",
+      "evidence": [
+        "files/policies/ci.json: merge_method",
+        "gh pr merge: merge method applied, merge_sha, merged_tree",
+        "files/policies/branch-protection.json: required_linear_history=false (a merge commit is allowed)"
+      ],
+      "refusal_code": "MERGE_REJECTED"
+    },
+    "Q-BASE": {
+      "definition": "The PR's base is files/policies/ci.json.promotion_branch, server-side; gh pr create requires head and title, and its optional body is descriptive only (it never sets the base). The baseRefOid returned by gh pr create equals the live promotion_branch tip and is recorded, not compared to capability.base.",
+      "evidence": [
+        "files/policies/ci.json: promotion_branch",
+        "gh pr create: baseRefOid",
+        "git state: live promotion_branch tip"
+      ],
+      "refusal_code": "BASE_MOVED"
+    },
+    "Q-PROT": {
+      "definition": "A fresh gh api branch protection call for files/policies/ci.json.promotion_branch at the PR base OID returns verified=true, matches_policy=true, refusal_code=null, protected=true, and observed_head equal to that base OID. Its normalized required_contexts are the mapped product-ci GitHub contexts, and strict, enforce_admins, allow_force_pushes, allow_deletions, required_reviews, conversation_resolution, and required_linear_history equal files/policies/branch-protection.json. A 404 (\"Branch not protected\") is PROTECTION_MISSING, any setting difference is PROTECTION_MISMATCH, and a moved base is STATE_MISMATCH; each refuses. The policy file's live_verified/verified_at/response_sha256 is a historical observation, never a substitute for the fresh call, which must be re-run immediately before merge.",
+      "evidence": [
+        "gh api branch protection: protected, required_contexts, strict, enforce_admins, allow_force_pushes, allow_deletions, required_reviews, conversation_resolution, fetched_at, response_sha256",
+        "gh pr create: baseRefOid",
+        "files/policies/branch-protection.json: expected settings"
+      ],
+      "refusal_code": "PROTECTION_UNVERIFIED"
+    },
+    "Q-PRHEAD": {
+      "definition": "The PR's headRefOid returned by gh pr create equals the release head that git push just pushed.",
+      "evidence": [
+        "gh pr create: headRefOid",
+        "git push: pushed sha"
+      ],
+      "refusal_code": "STATE_MISMATCH"
+    },
+    "Q-GUARD": {
+      "definition": "When capability.task_kind is DRAIN, the guard test named by capability.guard_ref is present at the lane verdict head, is not skipped or xfailed, and passes in that verdict's SUITE result. Its absence or skip refuses the release.",
+      "evidence": [
+        "release capability: task_kind, guard_ref",
+        "recorded lane verdict: SUITE result and test node state",
+        "drain.validate"
+      ],
+      "refusal_code": "GUARD_REMOVED"
+    },
+    "Q-CHECKS": {
+      "definition": "Every required id in files/policies/ci-required.json is accounted for at the release head: every github_check_map entry with source product-ci names a real GitHub check that is present and SUCCESS in the single gh pr checks run; every factory-gate id carries a harness-computed check proofs ref for the same head; no required id has source unmapped. gh pr merge re-reads the composed release result and refuses unless those product-ci SUCCESS entries and factory-gate evidence refs are present. A failed check is CHECKS_FAILED, a pending or timed-out watch is CHECKS_TIMEOUT, and a missing mapped name or unmapped id is CHECKS_UNMAPPED. None of them is cleared by a second watch on the same head. A deployment workflow that is red while files/policies/ci.json.deployment.disabled_variable is not true is environmental residual, not a required-check failure and never a CHECKS_FAILED; when deployment is enabled, its red check is CI_FAILED.",
+      "evidence": [
+        "files/policies/ci-required.json: required ids and github_check_map (source, names, command)",
+        "gh pr checks: one run per head, gh pr checks name/state/link per mapped product-ci name, missing/unmapped ids",
+        "recorded proof store release record (release_record_ref) with a harness-computed check proofs_ref per factory-gate id",
+        "files/policies/ci.json.deployment: disabled_variable, disabled_red, enabled_red"
+      ],
+      "refusal_code": "CHECKS_FAILED|CHECKS_TIMEOUT|CHECKS_UNMAPPED"
+    }
+  }
+}

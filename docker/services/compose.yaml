@@ -1,0 +1,150 @@
+# Host test services (dev/test only): pg2a, pg2b, redis.
+# Loopback-only published ports are the agent contract:
+#   pg2a  127.0.0.1:5432  postgresql://perfume:pg2a_local_test_only@127.0.0.1:5432/perfume_store
+#   pg2b  127.0.0.1:5433  postgresql://perfume:pg2b_local_test_only@127.0.0.1:5433/perfume_store
+#   redis 127.0.0.1:6379  redis://127.0.0.1:6379/0
+# tmpfs-only (no volumes), fsync off for speed; data is disposable.
+# Pins: see image-pins.json. The scripts start with --pull never.
+name: services
+
+services:
+  pg2a:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    container_name: pg2a
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - shared_buffers=32MB
+      - -c
+      - max_connections=40
+      - -c
+      - effective_cache_size=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=16MB
+    environment:
+      POSTGRES_DB: perfume_store
+      POSTGRES_USER: perfume
+      POSTGRES_PASSWORD: pg2a_local_test_only
+    ports:
+      - "127.0.0.1:5432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data:rw,nosuid,nodev,size=128m
+    mem_limit: 256m
+    cpus: 0.5
+    shm_size: 32m
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perfume -d perfume_store"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "1"
+        compress: "false"
+    networks: ["services"]
+
+  pg2b:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    container_name: pg2b
+    command:
+      - postgres
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - shared_buffers=32MB
+      - -c
+      - max_connections=40
+      - -c
+      - effective_cache_size=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=16MB
+    environment:
+      POSTGRES_DB: perfume_store
+      POSTGRES_USER: perfume
+      POSTGRES_PASSWORD: pg2b_local_test_only
+    ports:
+      - "127.0.0.1:5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data:rw,nosuid,nodev,size=128m
+    mem_limit: 256m
+    cpus: 0.5
+    shm_size: 32m
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perfume -d perfume_store"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "1"
+        compress: "false"
+    networks: ["services"]
+
+  redis:
+    image: redis:7-alpine@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7
+    container_name: redis
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - allkeys-lru
+    ports:
+      - "127.0.0.1:6379:6379"
+    tmpfs:
+      - /data:rw,nosuid,nodev,size=64m
+    mem_limit: 96m
+    cpus: 0.25
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging:
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "1"
+        compress: "false"
+    networks: ["services"]
+
+networks:
+  services:
+    driver: bridge

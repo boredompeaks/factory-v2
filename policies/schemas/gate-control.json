@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "gate-control.json",
+  "title": "gate-control",
+  "version": 2,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "gate_sha",
+    "gate_impl_digest",
+    "policy_digest",
+    "control_set_sha",
+    "controls_total",
+    "controls_rejected",
+    "all_rejected",
+    "result",
+    "controls",
+    "engine",
+    "created_at",
+    "sig_status",
+    "prev_hash",
+    "record_hash"
+  ],
+  "properties": {
+    "schema": {
+      "const": "gate-control/1"
+    },
+    "gate_sha": {
+      "type": "string",
+      "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "policy_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "gate_impl_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "control_set_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "controls_total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Known-bad count per gate_control.py build/verify: number of controls with expected_outcome FAIL. Must equal # expected FAIL in controls (JSON Schema cannot express len equality; tools/gate_control.py --verify enforces it). Must be >=1 when controls is non-empty (all_rejected PASS implies every known-bad was rejected)."
+    },
+    "controls_rejected": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Rejected known-bad count: number of controls with expected_outcome FAIL and rejected true. Must equal # expected FAIL with rejected true in controls (enforced by gate_control.py --verify; JSON Schema cannot express len equality)."
+    },
+    "all_rejected": {
+      "type": "boolean"
+    },
+    "result": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL",
+        "SUPERSEDED"
+      ],
+      "default": "PASS"
+    },
+    "superseded_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "controls": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/control"
+      },
+      "description": "One entry per control outcome (declared count). Empty list is invalid: at least one control must be sealed."
+    },
+    "engine": {
+      "type": "string",
+      "enum": [
+        "sqlite",
+        "postgres",
+        "both",
+        "none"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Must validate as RFC3339 date-time with FormatChecker enabled (jsonschema FormatChecker). Plain strings such as 'yesterday' are invalid."
+    },
+    "sig_status": {
+      "const": "unsigned_local"
+    },
+    "prev_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "record_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check_id",
+        "control_id",
+        "fixture_ref",
+        "expected_outcome",
+        "observed_outcome",
+        "rejected"
+      ],
+      "properties": {
+        "check_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "control_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fixture_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_outcome": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "FAIL"
+          ]
+        },
+        "observed_outcome": {
+          "type": "string",
+          "enum": [
+            "PASS",
+            "FAIL",
+            "ERROR"
+          ]
+        },
+        "rejected": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "rejected": {
+                "const": true
+              }
+            },
+            "required": [
+              "rejected"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_outcome": {
+                "const": "FAIL"
+              }
+            },
+            "description": "rejected true requires observed_outcome FAIL (builder invariant rejected = (observed == FAIL)). rejected true + observed PASS/ERROR is contradictory."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "rejected": {
+                "const": false
+              }
+            },
+            "required": [
+              "rejected"
+            ]
+          },
+          "then": {
+            "properties": {
+              "observed_outcome": {
+                "enum": [
+                  "PASS",
+                  "ERROR"
+                ]
+              }
+            },
+            "description": "rejected false requires observed_outcome PASS or ERROR (never FAIL). rejected false + observed FAIL is contradictory."
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "expected_outcome": {
+                "const": "FAIL"
+              }
+            },
+            "required": [
+              "expected_outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "rejected": {
+                "const": true
+              }
+            },
+            "description": "Every expected FAIL (known-bad) control must be rejected true. Expected FAIL + rejected false means a known-bad fixture was not rejected."
+          }
+        }
+      ]
+    }
+  }
+}

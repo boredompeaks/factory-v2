@@ -1,0 +1,13 @@
+{
+  "version": "services-2026-11-10",
+  "note": "Canonical: files/docker/services/. Digests verified against local images on 2026-11-10 via docker image inspect (redis:7-alpine pulled once, then pinned).",
+  "pins": {
+    "postgres:17-alpine": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+    "redis:7-alpine": "sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7"
+  },
+  "source": {
+    "postgres:17-alpine": "docker image inspect postgres:17-alpine -> postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 (already local)",
+    "redis:7-alpine": "docker pull redis:7-alpine -> redis@sha256:7b1753b4c5ad8458906c272a8132b8c15f5557b000379eb115fb239706a384b7 (pulled once 2026-11-10)"
+  },
+  "pending": []
+}

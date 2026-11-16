@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "description": "The visible mode registry. A mode names the workflow shape a dispatch belongs to; the phase (BUILD/GATE) names the concurrency state. They are orthogonal and both are required on every orchestrator decision and dispatch record. No mode is inferred from prose, and no role may run a mode that is not listed for it.",
+  "policy_ref": "files/policies/modes.json",
+  "phase_policy_ref": "files/policies/phases.json",
+  "task_statuses": [
+    "queued",
+    "in-flight",
+    "done",
+    "blocked",
+    "parked"
+  ],
+  "parked": {
+    "status": "parked",
+    "decision_action": "HALT",
+    "reason_code": "PARKED",
+    "meaning": "The task is deliberately stopped with no active work and no active capability. It is not blocked, not failed, and not done. Only a human-authored proof record or owner instruction resumes it; the orchestrator cannot unpark its own decision.",
+    "resume": "10-resume.md with the human-authored resume record ref; the resumed task gets a new capability at the live head/tree, never the parked capability."
+  },
+  "modes": {
+    "INTAKE": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/00-intake.md",
+      "roles": [
+        "orchestrator"
+      ],
+      "exit": "one classified route with a mode and SOP id"
+    },
+    "RESUME": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/10-resume.md",
+      "roles": [
+        "orchestrator"
+      ],
+      "exit": "one recovered task and its owning mode"
+    },
+    "FEATURE": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/30-feature.md",
+      "roles": [
+        "orchestrator",
+        "builder",
+        "auditor"
+      ],
+      "exit": "release-train trigger or a named refusal"
+    },
+    "BUGFIX": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/20-bugfix.md",
+      "roles": [
+        "orchestrator",
+        "auditor",
+        "hacker",
+        "builder"
+      ],
+      "exit": "delta PASS or a named refusal"
+    },
+    "SPEC_COMPLETION": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/40-spec-completion.md",
+      "roles": [
+        "orchestrator",
+        "compliance",
+        "builder",
+        "auditor"
+      ],
+      "exit": "clean re-check or a named refusal"
+    },
+    "BUILD": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/builder/10-worktree.md",
+      "roles": [
+        "builder"
+      ],
+      "exit": "builder-result RESULT/BLOCKED/REFUSED"
+    },
+    "AUDIT": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/auditor/10-audit.md",
+      "roles": [
+        "auditor",
+        "hacker"
+      ],
+      "exit": "auditor-verdict PASS/BLOCK/INCONCLUSIVE/REFUSED"
+    },
+    "DELTA_AUDIT": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/auditor/15-delta.md",
+      "roles": [
+        "auditor",
+        "hacker"
+      ],
+      "exit": "delta verdict for the new head/tree"
+    },
+    "BUG_FINDING": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/80-bug-finding.md",
+      "roles": [
+        "orchestrator",
+        "auditor",
+        "hacker"
+      ],
+      "exit": "one bug-report COMPLETE/PARTIAL/BLOCKED"
+    },
+    "COMPLIANCE": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/compliance/10-review.md",
+      "roles": [
+        "compliance"
+      ],
+      "exit": "compliance-result COMPLETE/PARTIAL/BLOCKED"
+    },
+    "DOCS": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/crouton-alpha/10-docs.md",
+      "roles": [
+        "crouton-alpha"
+      ],
+      "exit": "crouton-result DONE/BLOCKED/REFUSED"
+    },
+    "DRAIN": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/60-drain.md",
+      "roles": [
+        "orchestrator",
+        "compliance",
+        "auditor",
+        "hacker",
+        "builder",
+        "release-engineer"
+      ],
+      "exit": "drain R5 guard verified or a named unreproducible/refusal"
+    },
+    "EVALUATION": {
+      "phase": "BUILD",
+      "entry_sop": "files/sop/orchestrator/70-evaluator.md",
+      "roles": [
+        "orchestrator",
+        "auditor",
+        "compliance",
+        "crouton-alpha"
+      ],
+      "exit": "one evaluation record with routed findings"
+    },
+    "RELEASE": {
+      "phase": "GATE",
+      "entry_sop": "files/sop/orchestrator/50-release.md",
+      "roles": [
+        "orchestrator",
+        "release-engineer"
+      ],
+      "exit": "proof-recorded release result MERGED or REFUSED"
+    },
+    "ESCALATION": {
+      "phase": "ANY",
+      "entry_sop": "files/sop/orchestrator/90-escalation.md",
+      "roles": [
+        "orchestrator"
+      ],
+      "exit": "HALT record and owner route"
+    },
+    "PARK": {
+      "phase": "ANY",
+      "entry_sop": "files/sop/orchestrator/90-escalation.md",
+      "roles": [
+        "orchestrator"
+      ],
+      "exit": "HALT action with reason_code PARKED and task status parked"
+    }
+  },
+  "rules": [
+    "Every orchestrator-decision and dispatch record names one mode from this file and one phase from phases.json.",
+    "A role may run only a mode in its modes[].roles list; a missing mode is a stop, not an implicit grant.",
+    "INTAKE selects exactly one other mode; INTAKE itself does no work.",
+    "RESUME may select any mode except INTAKE; it never invents a task.",
+    "RELEASE is the only mode in GATE; ESCALATION and PARK may halt any phase.",
+    "PARK never leaves active work behind: no capability, auditor, K1 run, or builder session remains active."
+  ],
+  "orchestrator_targets": [
+    "builder",
+    "auditor",
+    "release-engineer",
+    "compliance",
+    "crouton-alpha"
+  ]
+}

@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "compliance-result.json",
+  "title": "compliance-result",
+  "version": 2,
+  "description": "One compliance result for one spec section or drain cluster. Closed shape: additional properties are rejected at every object level.",
+  "$comment": "Ids are REQ-<section>.<n> for requirements or DR-<stage>-<n> for drain review items; product [R-x.y] ids are external references and never appear here as minted ids. JSON Schema covers shape: id pattern, unique items, evidence/gap format, line bounds, and verdict/status consistency. files/tools/validate_compliance_result.py enforces the invariants JSON Schema cannot: status_counts tally, REQ section match, id uniqueness, and start_line <= end_line.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "section",
+    "range",
+    "requirements",
+    "status_counts",
+    "uncovered",
+    "verdict"
+  ],
+  "properties": {
+    "schema": {
+      "const": "compliance-result/1"
+    },
+    "section": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?$",
+      "description": "Spec section this result covers, without the S prefix (for example 22 or 9.3)."
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "start_line",
+        "end_line"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Spec file the lines belong to."
+        },
+        "start_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_line": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "description": "Exact spec line range reviewed. The validator enforces start_line <= end_line."
+    },
+    "requirements": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/requirement"
+      },
+      "description": "Every extracted requirement in id order. A gap row is never merged, dropped, or ranged. Duplicate ids are rejected by the validator even when the rows differ."
+    },
+    "status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "IMPLEMENTED",
+        "PARTIAL",
+        "MISSING",
+        "DEVIATES",
+        "NOT-APPLICABLE",
+        "DEFERRED"
+      ],
+      "properties": {
+        "IMPLEMENTED": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "PARTIAL": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "MISSING": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "DEVIATES": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "NOT-APPLICABLE": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "DEFERRED": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "description": "Must equal the actual tally of requirements by status; the validator enforces it."
+    },
+    "uncovered": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Requirement ids or spec line ranges that were not reviewed. Empty only when coverage is whole; a BLOCKED result names what could not be read."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "BLOCKED"
+      ],
+      "description": "COMPLETE = every requirement classified and no PARTIAL/MISSING/DEVIATES remains; PARTIAL = evidence-backed gaps or uncovered ranges remain; BLOCKED = the review or its write could not run."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "COMPLETE"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "requirements": {
+            "minItems": 1
+          },
+          "status_counts": {
+            "properties": {
+              "PARTIAL": {
+                "const": 0
+              },
+              "MISSING": {
+                "const": 0
+              },
+              "DEVIATES": {
+                "const": 0
+              }
+            }
+          },
+          "uncovered": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "BLOCKED"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "uncovered": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "PARTIAL"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "properties": {
+              "status_counts": {
+                "properties": {
+                  "PARTIAL": {
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "status_counts": {
+                "properties": {
+                  "MISSING": {
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "status_counts": {
+                "properties": {
+                  "DEVIATES": {
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "properties": {
+              "uncovered": {
+                "minItems": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "evidence",
+        "gap"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "anyOf": [
+            {
+              "pattern": "^REQ-[0-9]+(\\.[0-9]+)+$"
+            },
+            {
+              "pattern": "^DR-R[1-5]-[0-9]+$"
+            }
+          ],
+          "description": "REQ-<section>.<n> for a requirement; DR-<stage>-<n> for a drain review item. No bare stage token and no R- id."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "IMPLEMENTED",
+            "PARTIAL",
+            "MISSING",
+            "DEVIATES",
+            "NOT-APPLICABLE",
+            "DEFERRED"
+          ],
+          "description": "DEFERRED is the wire value for the SOP label DEFERRED->S<x>; gap names the owning section."
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(none(; .+)?|\\S+:\\d+(?:-\\d+)?)$",
+          "description": "path:line, path:first-last, or none followed by the searches actually run (none; <text>)."
+        },
+        "gap": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The exactly missing piece; the single dash is allowed only for IMPLEMENTED and NOT-APPLICABLE. A DEFERRED row names the owning section S<x>."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "PARTIAL",
+                  "MISSING",
+                  "DEVIATES",
+                  "DEFERRED"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "gap": {
+                "minLength": 2,
+                "not": {
+                  "enum": [
+                    "—",
+                    "-"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

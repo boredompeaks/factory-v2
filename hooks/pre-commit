@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "factory pre-commit: not inside a Git worktree" >&2
+  exit 1
+}
+cd "$root"
+
+if [[ ${FACTORY_OWNER:-0} != 1 ]]; then
+  while IFS= read -r path; do
+    case "$path" in
+      policies/*|sop/*|skills/*|agents/*|factory/*|.agt/*)
+        echo "factory pre-commit: protected path staged: $path (set FACTORY_OWNER=1 for an owner commit)" >&2
+        exit 1
+        ;;
+    esac
+  done < <(git diff --cached --name-only --diff-filter=ACMR)
+fi
+
+factory_cmd=$(command -v factory || true)
+if [[ -z "$factory_cmd" && -x "$root/bin/factory" ]]; then
+  factory_cmd="$root/bin/factory"
+fi
+if [[ -n "$factory_cmd" ]]; then
+  "$factory_cmd" scope check --staged || {
+    echo "factory pre-commit: staged changes violate task scope" >&2
+    exit 1
+  }
+else
+  echo "factory pre-commit: factory CLI not found; cannot validate staged scope" >&2
+  exit 1
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged || {
+    echo "factory pre-commit: gitleaks found a secret or could not complete" >&2
+    exit 1
+  }
+fi
+
+if command -v ruff >/dev/null 2>&1; then
+  mapfile -d '' pyfiles < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.py')
+  if ((${#pyfiles[@]})); then
+    ruff check -- "${pyfiles[@]}" || {
+      echo "factory pre-commit: ruff rejected staged Python files" >&2
+      exit 1
+    }
+  fi
+fi

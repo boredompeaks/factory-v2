@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "description": "The factory has exactly two phases. BUILD alternates one author and one auditor per lane until the release-train criteria hold. GATE is release-engineer-exclusive: no builder, auditor, hacker, compliance, or crouton-alpha dispatch runs while the release-engineer owns the section. A refused release returns to BUILD for the bounded repair; a merged release returns to BUILD for the next section. This file is the only definition of the phase rules; personas, SOPs, and schemas cite it and do not restate the values.",
+  "policy_ref": "files/policies/phases.json",
+  "lane_source": "files/policies/worktree-map.json",
+  "permanent_lanes": [
+    "lane/a",
+    "lane/b"
+  ],
+  "integration_lane": "spec-comp",
+  "k1_policy_ref": "files/policies/concurrency.json",
+  "k1_rule": "One K1 run per lane, at most k1_total host-wide, no queue. A lane whose K1 slot is busy is not dispatched; the caller retries after factory k1 down or TTL expiry. A second K1 on one lane is refused with K1_SLOT_BUSY.",
+  "phases": {
+    "BUILD": {
+      "purpose": "Author, then audit, one lane at a time; never both on the same lane.",
+      "allowed_targets": [
+        "builder",
+        "auditor",
+        "compliance",
+        "crouton-alpha"
+      ],
+      "forbidden_targets": [
+        "release-engineer",
+        "hacker"
+      ],
+      "author_targets": [
+        "builder",
+        "compliance",
+        "crouton-alpha"
+      ],
+      "auditor_targets": [
+        "auditor"
+      ],
+      "lane_rule": "A builder, compliance, crouton-alpha, or auditor dispatch names exactly one permanent lane. Compliance may run lane-less only for a spec-wide read, and then it dispatches no writer.",
+      "exclusivity_rule": "At most one active author and one active auditor per lane, never both. The latest dispatch record for a lane is the active owner: an auditor target is active until a later RECORD/HALT/DISPATCH for that lane; an author target is active until a later RECORD/HALT/DISPATCH for that lane. A dispatch that would put an author and an auditor on the same lane at the same time is refused with PHASE_LANE_BUSY.",
+      "alternation_rule": "Within one task on one lane, the order is author -> auditor. A second author dispatch is legal only after the auditor returned BLOCK (repair) or after the task's verdict is recorded. A second auditor dispatch on the same (head, tree) is legal only for a permitted fault re-audit or the delta audit of a repair.",
+      "release_train_criteria": [
+        "the release_train trigger in this file: 6 completed tasks or 6 hours since the section opened, whichever first",
+        "every active permanent lane has a recorded auditor verdict PASS at the section head/tree",
+        "no lane has an active author or auditor dispatch",
+        "no HALT/PARKED record is open for the lineage",
+        "the live policy_digest and control_set_sha match the newest gate-control proof",
+        "the integration worktree is clean at the reconciled section head"
+      ]
+    },
+    "GATE": {
+      "purpose": "Release the audited section; the release-engineer is the only active role.",
+      "allowed_targets": [
+        "release-engineer"
+      ],
+      "forbidden_targets": [
+        "builder",
+        "auditor",
+        "hacker",
+        "compliance",
+        "crouton-alpha"
+      ],
+      "lane_rule": "The release-engineer dispatch is lane-less (spec-comp is the integration target and is resolved by worktree-map.json). No lane worktree is dispatched or written.",
+      "exclusivity_rule": "Exactly one release-engineer invocation is active. No author, auditor, hacker, compliance, or crouton-alpha dispatch may be recorded until the release result is recorded.",
+      "exit_rule": "A proof-recorded release record with phase MERGED ends the gate and returns the factory to BUILD for the next section. A proof-recorded release record with result_type REFUSED, or an orchestrator CYCLES_EXHAUSTED/RELEASE_REFUSED decision, returns to BUILD for the bounded repair loop."
+    }
+  },
+  "transitions": [
+    {
+      "from": "BUILD",
+      "to": "GATE",
+      "requires": [
+        "every active lane has a recorded verdict PASS",
+        "no active author or auditor dispatch on any lane",
+        "the release-train criteria in phases.BUILD"
+      ],
+      "record": "orchestrator dispatch record with phase=GATE, action=DISPATCH, target=release-engineer, and evidence_refs naming every lane PASS verdict",
+      "refusal_code": "RELEASE_TRAIN_INCOMPLETE"
+    },
+    {
+      "from": "GATE",
+      "to": "BUILD",
+      "requires": [
+        "a proof-recorded release result (MERGED, or REFUSED with a CI_*/CHECKS_*/MERGE_REJECTED/STATE_MISMATCH reason), or an orchestrator CYCLES_EXHAUSTED/RELEASE_REFUSED record",
+        "no active release-engineer dispatch"
+      ],
+      "record": "orchestrator dispatch record with phase=BUILD, action=RECORD, target=none, and the recorded release ref",
+      "refusal_code": "RELEASE_GATE_OPEN"
+    },
+    {
+      "from": "GATE",
+      "to": "GATE",
+      "requires": [
+        "the same lineage",
+        "the release-engineer returned a refusal that permits a repaired head",
+        "the orchestrator records the repair was routed to BUILD first; this self-edge exists only for the record of the refusal, never for a second merge on the same head"
+      ],
+      "record": "orchestrator dispatch record with phase=GATE, action=RECORD, target=none, refusal reason",
+      "refusal_code": "RELEASE_GATE_OPEN"
+    }
+  ],
+  "invariants": [
+    "No phase is inferred from prose, a prompt, or a result body; it is read from the latest recorded dispatch record for the lineage.",
+    "A phase record is append-only. A transition writes one new record; it never edits the prior phase record.",
+    "A HALT ends the turn and freezes the phase until a human-authored capability resumes it.",
+    "The orchestrator holds routing authority only; the phase does not grant it code, verdict, or merge authority.",
+    "The release-engineer may not dispatch any role and has no child. The auditor is the only role with a child, and only in BUILD."
+  ],
+  "release_train": {
+    "trigger": "first",
+    "max_tasks": 6,
+    "max_wall_clock_hours": 6,
+    "conditions": [
+      "6 completed tasks in the section, whichever first",
+      "6 hours since the section opened, whichever first",
+      "every active permanent lane has a recorded auditor verdict PASS at the section head/tree",
+      "no lane has an active author or auditor dispatch",
+      "no HALT/PARKED record is open for the lineage",
+      "the live policy_digest and control_set_sha match the newest gate-control proof",
+      "the integration worktree is clean at the reconciled section head"
+    ],
+    "task_count_source": "recorded dispatch records for the lineage that reach a PASS verdict at the section head; a re-audit or repair does not count as a new task",
+    "clock_source": "proof store timestamps from the first BUILD dispatch of the section to now; never the model session clock",
+    "on_trigger": "the orchestrator records phase=GATE and dispatches one release-engineer; it does not wait for a seventh task or the next hour",
+    "on_refusal": "a REFUSED release returns to BUILD for the bounded repair; the section clock continues and the cycle cap still applies"
+  },
+  "capability_lifecycle": {
+    "idle_ttl_seconds": 3600,
+    "max_tasks_per_capability": 6,
+    "expires_at_hours": 6,
+    "remint_reason": "IDLE_EXPIRY",
+    "rule": "A completed bound tool call slides the idle window to now + idle_ttl_seconds. An idle-expired but otherwise valid capability is reminted transparently with remint_reason IDLE_EXPIRY; the old id is superseded, never reused. Re-mint at 6 hours or 6 tasks, whichever first, with parent_task_id, fresh head/tree, and the remaining allowance. The handler is factory CLI."
+  }
+}

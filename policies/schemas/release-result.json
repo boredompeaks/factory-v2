@@ -1,0 +1,378 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "release-result.json",
+  "title": "release-result",
+  "version": 2,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "result_type",
+    "task_id",
+    "lineage_id",
+    "capability_id",
+    "outcome",
+    "refusal_code",
+    "pr_number",
+    "head",
+    "merge_sha",
+    "merged_tree",
+    "guard_ref",
+    "policy_digest",
+    "control_set_sha",
+    "checks",
+    "sig_status",
+    "record_hash",
+    "phase",
+    "tree"
+  ],
+  "properties": {
+    "schema": {
+      "const": "release-result/1"
+    },
+    "result_type": {
+      "type": "string",
+      "enum": [
+        "RESULT",
+        "REFUSED"
+      ]
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lineage_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capability_id": {
+      "type": "string",
+      "pattern": "^cap_[A-Za-z0-9_-]{8,64}$",
+      "description": "Must match capability.json capability_id (cap_ prefix). Cross-schema propagation from capability."
+    },
+    "outcome": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "MERGED",
+        null
+      ]
+    },
+    "refusal_code": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "SIG_INVALID",
+        "POLICY_DRIFT",
+        "VERDICT_NOT_PASS",
+        "STATE_MISMATCH",
+        "DIRTY_TREE",
+        "BASE_MOVED",
+        "PROTECTION_UNVERIFIED",
+        "GUARD_REMOVED",
+        "CHECKS_FAILED",
+        "CHECKS_TIMEOUT",
+        "CHECKS_UNMAPPED",
+        "MERGE_REJECTED",
+        null
+      ]
+    },
+    "pr_number": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 999999,
+      "description": "GitHub PR numbers are >=1 (matches registry pr.* minimum 1). Zero is invalid."
+    },
+    "head": {
+      "type": "string",
+      "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+    },
+    "merge_sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-f0-9]{40}$",
+      "description": "Merge commit SHA for phase MERGED; null for PRE_MERGE. Exactly 40 lowercase hex when present."
+    },
+    "merged_tree": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Merged tree for phase MERGED; null for PRE_MERGE."
+    },
+    "guard_ref": {
+      "$ref": "#/$defs/guard_ref"
+    },
+    "rollback_of": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,239}$",
+      "description": "Only on a rollback release record: the invalidated release record id/hash. Null or absent on a normal release."
+    },
+    "policy_digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "control_set_sha": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "contains": {
+        "type": "object",
+        "required": [
+          "runner",
+          "evidence_ref"
+        ],
+        "properties": {
+          "runner": {
+            "const": "factory-gate"
+          },
+          "evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "sig_status": {
+      "const": "unsigned_local"
+    },
+    "record_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "PRE_MERGE",
+        "MERGED"
+      ],
+      "description": "PRE_MERGE is the sealed evidence record gh pr merge loads; MERGED is the append-only completion record written after the merge."
+    },
+    "tree": {
+      "type": "string",
+      "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$",
+      "description": "Audited integration tree at the pinned head."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "result_type": {
+            "const": "REFUSED"
+          }
+        },
+        "required": [
+          "result_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "type": "null"
+          },
+          "phase": {
+            "const": "PRE_MERGE"
+          },
+          "merge_sha": {
+            "type": "null"
+          },
+          "merged_tree": {
+            "type": "null"
+          },
+          "refusal_code": {
+            "enum": [
+              "SIG_INVALID",
+              "POLICY_DRIFT",
+              "VERDICT_NOT_PASS",
+              "STATE_MISMATCH",
+              "DIRTY_TREE",
+              "BASE_MOVED",
+              "PROTECTION_UNVERIFIED",
+              "GUARD_REMOVED",
+              "CHECKS_FAILED",
+              "CHECKS_TIMEOUT",
+              "CHECKS_UNMAPPED",
+              "MERGE_REJECTED"
+            ]
+          }
+        },
+        "description": "REFUSED is a pre-merge outcome: outcome null, no merge fields, non-null refusal_code."
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "result_type": {
+            "const": "RESULT"
+          },
+          "phase": {
+            "const": "PRE_MERGE"
+          }
+        },
+        "required": [
+          "result_type",
+          "phase"
+        ]
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "type": "null"
+          },
+          "refusal_code": {
+            "type": "null"
+          },
+          "merge_sha": {
+            "type": "null"
+          },
+          "merged_tree": {
+            "type": "null"
+          }
+        },
+        "description": "PRE_MERGE is the sealed evidence record: no merge has happened yet."
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "result_type": {
+            "const": "RESULT"
+          },
+          "phase": {
+            "const": "MERGED"
+          }
+        },
+        "required": [
+          "result_type",
+          "phase"
+        ]
+      },
+      "then": {
+        "properties": {
+          "outcome": {
+            "const": "MERGED"
+          },
+          "refusal_code": {
+            "type": "null"
+          },
+          "merge_sha": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "merged_tree": {
+            "type": "string"
+          }
+        },
+        "description": "MERGED is the append-only completion record with the real merge sha/tree."
+      }
+    }
+  ],
+  "$defs": {
+    "guard_ref": {
+      "description": "Permanent guard reference: capability.guard_ref for DRAIN, null otherwise. Node id plus SHA-256 of the guard node.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "node_id",
+        "sha256"
+      ],
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "conclusion",
+        "head_sha",
+        "runner"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conclusion": {
+          "type": "string",
+          "enum": [
+            "SUCCESS",
+            "FAILURE",
+            "NEUTRAL",
+            "CANCELLED",
+            "SKIPPED",
+            "TIMED_OUT",
+            "ACTION_REQUIRED",
+            "STALE",
+            "STARTUP_FAILURE"
+          ],
+          "description": "GitHub Check Run conclusion (uppercased). Free text such as pass/pending is rejected."
+        },
+        "head_sha": {
+          "type": "string",
+          "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$"
+        },
+        "runner": {
+          "type": "string",
+          "enum": [
+            "release-engineer",
+            "ci",
+            "factory-gate"
+          ]
+        },
+        "evidence_ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required when runner is factory-gate: the sealed factory check evidence ref (record id, node id, or sealed tool-result id) proving the factory check at this head. GitHub check names cannot satisfy a factory-gate id."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "runner": {
+                "const": "factory-gate"
+              }
+            },
+            "required": [
+              "runner"
+            ]
+          },
+          "then": {
+            "required": [
+              "evidence_ref"
+            ],
+            "description": "A factory-gate check is unproven without its factory evidence ref."
+          }
+        }
+      ]
+    }
+  }
+}

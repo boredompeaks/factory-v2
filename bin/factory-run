@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: factory-run [--worktree PATH] [--no-sandbox] [--unshare-net] -- COMMAND [ARGS...]
+       factory-run [options] COMMAND [ARGS...]
+
+Run a command in the factory worktree sandbox. The worktree defaults to the
+current Git worktree (or the current directory outside Git).
+  --worktree PATH  Worktree to bind and use as the working directory
+  --no-sandbox     Run the command directly (for trusted owner operations)
+  --unshare-net    Disable network access in the sandbox
+  -h, --help       Show this help
+EOF
+}
+
+worktree=""
+no_sandbox=0
+unshare_net=0
+while (($#)); do
+  case "$1" in
+    --worktree)
+      (($# >= 2)) || { echo "factory-run: --worktree requires a path" >&2; exit 2; }
+      worktree=$2
+      shift 2
+      ;;
+    --no-sandbox) no_sandbox=1; shift ;;
+    --unshare-net) unshare_net=1; shift ;;
+    --) shift; break ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "factory-run: unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+
+(($#)) || { echo "factory-run: missing command" >&2; usage >&2; exit 2; }
+
+if [[ -z "$worktree" ]]; then
+  worktree=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+fi
+worktree=$(cd "$worktree" && pwd -P) || {
+  echo "factory-run: worktree does not exist: $worktree" >&2
+  exit 2
+}
+
+if ((no_sandbox)); then
+  cd "$worktree"
+  exec "$@"
+fi
+command -v bwrap >/dev/null 2>&1 || {
+  echo "factory-run: bwrap is required for sandboxed execution; install bubblewrap or use --no-sandbox" >&2
+  exit 127
+}
+
+evidence_root=${FACTORY_EVIDENCE_ROOT:-"$HOME/.factory/evidence"}
+opencode_dir="$HOME/.local/share/opencode"
+cache_dir="$HOME/.cache"
+mkdir -p "$evidence_root" "$opencode_dir" "$cache_dir"
+
+args=(
+  --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --dir /evidence
+  --bind "$worktree" "$worktree"
+  --ro-bind /home/boredompeaks/umairnlp /home/boredompeaks/umairnlp
+  --ro-bind "$evidence_root" /evidence
+  --bind "$opencode_dir" "$opencode_dir"
+  --bind "$cache_dir" "$cache_dir"
+  --die-with-parent --chdir "$worktree"
+)
+if ((unshare_net)); then
+  args+=(--unshare-net)
+fi
+exec bwrap "${args[@]}" -- "$@"

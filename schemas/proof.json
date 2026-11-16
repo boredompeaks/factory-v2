@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factory.local/schemas/proof.json",
+  "title": "Factory check proof",
+  "type": "object",
+  "required": [
+    "check",
+    "task_id",
+    "base",
+    "head",
+    "tree",
+    "command",
+    "tool",
+    "env",
+    "seed",
+    "exit",
+    "stdout_sha256",
+    "artifacts",
+    "result",
+    "detail",
+    "policy_hash"
+  ],
+  "properties": {
+    "check": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "head": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "tree": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "image": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "env": {
+      "type": "object",
+      "required": ["TZ", "PYTHONHASHSEED", "LC_ALL"],
+      "properties": {
+        "TZ": {
+          "const": "UTC"
+        },
+        "PYTHONHASHSEED": {
+          "const": "0"
+        },
+        "LC_ALL": {
+          "const": "C"
+        },
+        "network": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "seed": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "exit": {
+      "type": ["integer", "null"]
+    },
+    "stdout_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "result": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "SKIP", "TOOL_ABSENT", "FLAKY"]
+    },
+    "detail": {
+      "type": "string"
+    },
+    "policy_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "duration_ms": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": true
+}

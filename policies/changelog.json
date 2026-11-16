@@ -1,0 +1,71 @@
+{
+  "version": 2,
+  "file": "backend/docs/changes.md",
+  "format": "markdown_table",
+  "columns": [
+    "task_id",
+    "date",
+    "paths",
+    "invariant",
+    "attack_class",
+    "tier"
+  ],
+  "path_column": "paths",
+  "required_columns": [
+    "task_id",
+    "date",
+    "paths",
+    "invariant",
+    "attack_class",
+    "tier"
+  ],
+  "row_schema": {
+    "task_id": {
+      "type": "string",
+      "min_length": 1
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "paths": {
+      "type": "array",
+      "min_items": 1,
+      "items": "glob_or_path"
+    },
+    "invariant": {
+      "type": "string",
+      "min_length": 20,
+      "sentence_count": 1
+    },
+    "attack_class": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]+$"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "none",
+        "high",
+        "max"
+      ]
+    }
+  },
+  "attack_class_source": "policies/severity.json",
+  "tier_source": "capability.tier",
+  "coverage_rule": "union(added_row_paths) == diff_paths - exempt_paths",
+  "path_match": "glob",
+  "exempt_paths": [
+    "CHANGELOG.md",
+    "backend/docs/changes.md",
+    "docs/**",
+    "quality/**",
+    "**/*.lock",
+    "**/*.png",
+    "**/*.svg",
+    "**/*.ico"
+  ],
+  "max_rows_per_change": 10,
+  "require_row_for_each_non_exempt_path": true,
+  "historical_entries_file": "files/quality/changelog-history.json"
+}

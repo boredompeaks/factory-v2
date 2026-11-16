@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+message=${1:?usage: commit-msg COMMIT_MSG_FILE}
+contents=$(cat "$message")
+
+# Git creates these message forms for merges and reverts; neither is a task
+# commit authored through the normal factory workflow.
+if [[ "$contents" =~ ^Merge[[:space:]] ]] || [[ "$contents" =~ ^Revert[[:space:]] ]]; then
+  exit 0
+fi
+if ! grep -Eq '^[[:space:]]*Task-Id:[[:space:]]+[[:alnum:]][[:alnum:]._-]*[[:space:]]*$' "$message"; then
+  echo "factory commit-msg: add a 'Task-Id: <id>' trailer to the commit message" >&2
+  exit 1
+fi

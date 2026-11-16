@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "scope": "Single-host factory runtime (K1 sandbox + host test services).",
+  "k1_total": 2,
+  "k1_per_lane": 1,
+  "k1_note": "Host-wide K1 run slots and per-lane slots. Enforced atomically by factory k1 before factory k1 up starts containers; a refusal is K1_SLOT_BUSY. See files/runbooks/k1.md and files/policies/dispatch-rules.json.",
+  "postgres": {
+    "max_connections": 40,
+    "note": "Single server-side cap for all three PostgreSQL containers: pg2a and pg2b pass -c max_connections in files/docker/services/compose.yaml, and both the k1 compose service and the factory k1 up docker argv read this value. scripts/test_policy_contracts.py enforces the match. The app pool below is separate."
+  },
+  "app": {
+    "pool_size_per_service": 10,
+    "note": "Documented application pool per Postgres service instance. At most three pools on this host (K1 app, pg2a, pg2b) use 30 of the 40 server connections; the remainder covers Postgres reserved/admin slots. See files/runbooks/k1.md and files/runbooks/services.md."
+  },
+  "probe": {
+    "concurrency_cap": 4,
+    "max_attempts_per_call": 10,
+    "note": "At most four hacker probes in flight per host. Enforced by the factory probe loop in factory probe; see files/runbooks/test-runner.md."
+  }
+}

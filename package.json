@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@microsoft/agent-governance-opencode": "5.0.0",
+    "@opencode-ai/plugin": "1.18.34",
+    "@opencode/plugin": "2.2.5"
+  },
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,71 @@
+{
+  "version": 2,
+  "not_run_in_ci": [
+    "SCOPE",
+    "TEST_SET",
+    "TEST_INFRA",
+    "BASE_FAIL_HEAD_PASS",
+    "MUTATION",
+    "SMELL",
+    "GATE_CONTROLS",
+    "ORACLE_PROVENANCE",
+    "GUARD_DELTA",
+    "SEMGREP",
+    "THREAD_RACE",
+    "SCHEMA_FUZZ",
+    "DAST_BASELINE",
+    "AGT_PARITY",
+    "AGT_AUDIT",
+    "RADON",
+    "BANDIT"
+  ],
+  "timeout_seconds": 1800,
+  "base_branch": "spec-comp",
+  "promotion_branch": "feat/add-frontend",
+  "merge_method": "merge",
+  "required_checks_source": "files/policies/checks.json checks[required_in_ci == true] (single source; generated file files/policies/ci-required.json)",
+  "one_source": "files/policies/checks.json",
+  "required_checks_only_self_audit": true,
+  "self_audit_owner": "release-engineer",
+  "branch_roles": {
+    "note": "Descriptive only. The live keys are top-level promotion_branch (promotion PR base) and base_branch (integration/default head); the gh pr create reads promotion_branch directly.",
+    "task": "task/<task_id> per-task branches are historical; no live tool reads a task prefix, so promotion_branch_prefix (task/) was removed in A51. git push allowlists spec-comp, lane/a, lane/b only.",
+    "base_branch": "spec-comp: integration branch; default head of the promotion PR and the branch lanes reconcile into.",
+    "promotion_branch": "feat/add-frontend: base of the promotion PR; never a head."
+  },
+  "shadow": {
+    "cycles": 0,
+    "effect": "block",
+    "blocks_merge": true,
+    "applies_to": []
+  },
+  "product_side_pending": {
+    "note": "Factory-side readiness for the two checks that belong in product CI. The factory already defines RADON and BANDIT as high/max checks with exact commands in ci-required.json github_check_map; they are not yet required_in_ci because the product workflow does not produce them. The owner/FDE must add the two jobs below to backend-tests.yml (or a new workflow), change the two github_check_map entries from factory-gate to product-ci with the observed job names, set required_in_ci=true for RADON and BANDIT in checks.json, regenerate ci-required/branch-protection with scripts/generate_policies.py, and re-run the gh api branch protection apply path. Until then the factory refuses an unmapped required id rather than claiming a GitHub check that does not exist.",
+    "jobs": [
+      {
+        "check_id": "RADON",
+        "github_name": "radon",
+        "command": "radon cc -s -j --min C backend",
+        "product_path": ".github/workflows/backend-tests.yml",
+        "failure_rule": "rank C or worse on a changed non-test Python file"
+      },
+      {
+        "check_id": "BANDIT",
+        "github_name": "bandit",
+        "command": "bandit -r -f json -q backend",
+        "product_path": ".github/workflows/backend-tests.yml",
+        "failure_rule": "MEDIUM or higher on a changed non-test Python file"
+      }
+    ]
+  },
+  "merge_method_note": "FF-only lane sync; section promotion uses a merge commit at the pinned head. Never squash/rebase, and never change the strategy because a dormant deployment check is red.",
+  "deployment": {
+    "workflow": "deploy",
+    "required_check": false,
+    "disabled_variable": "DEPLOY_ENABLED",
+    "disabled_value": "true",
+    "disabled_red": "RESIDUAL_DEPLOY_DISABLED",
+    "enabled_red": "CI_FAILED",
+    "rule": "A deploy workflow that is red while DEPLOY_ENABLED is not true is environmental and never a CHECKS_FAILED or a merge blocker. If DEPLOY_ENABLED is true, the deployment is a release attempt: its red check is CI_FAILED and must be repaired, never merged around. Deployment never changes the merge method."
+  }
+}

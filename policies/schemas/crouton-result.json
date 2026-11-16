@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "crouton-result.json",
+  "title": "crouton-result",
+  "version": 1,
+  "description": "One crouton-alpha docs/UX result for one sealed capability. Closed shape: additional properties are rejected at every object level.",
+  "$comment": "Paths in written_paths are relative to the repo root and must sit under backend/docs/** intersected with capability.scope. A UX behaviour is never asserted here without evidence: surfaces that could not be read or observed belong in unverified, and documented mismatches belong in ux_gaps. REFUSED means no path was written; BLOCKED names the rejected path or the unread surface.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "capability_id",
+    "tree",
+    "written_paths",
+    "ux_gaps",
+    "unverified",
+    "status",
+    "evidence_ref"
+  ],
+  "properties": {
+    "schema": {
+      "const": "crouton-result/1"
+    },
+    "capability_id": {
+      "type": "string",
+      "pattern": "^cap_[A-Za-z0-9_-]{8,64}$",
+      "description": "Must match capability.json capability_id."
+    },
+    "tree": {
+      "type": "string",
+      "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$",
+      "description": "Git tree sha of the working tree after the writes; must match the capability end-state tree."
+    },
+    "written_paths": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/written_path"
+      },
+      "description": "Every doc path written or edited, each with the sha256 of the final bytes. Empty when nothing was written: REFUSED, or BLOCKED before the first write."
+    },
+    "ux_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Documented mismatches between docs/design notes and implemented behaviour, each with its evidence ref. Not silently fixed in prose."
+    },
+    "unverified": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "User-visible surfaces that were not read or observed. A behaviour listed here is not claimed as done."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "DONE",
+        "BLOCKED",
+        "REFUSED"
+      ],
+      "description": "DONE = docs written in scope; BLOCKED = a needed path or surface fell outside backend/docs/** or capability.scope; REFUSED = invalid envelope or moved state."
+    },
+    "evidence_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "path:line, path:line-line, or a tool-result id backing the result; never a bare assertion."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "DONE"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "written_paths": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "REFUSED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "written_paths": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "BLOCKED"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "properties": {
+              "unverified": {
+                "minItems": 1
+              }
+            }
+          },
+          {
+            "properties": {
+              "ux_gaps": {
+                "minItems": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "written_path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^backend/docs/",
+          "description": "Repo-relative path under backend/docs/**; must also be inside capability.scope."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Lowercase hex sha256 of the final file bytes."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "version": "6B-7+unified-2026-11-08+k1deps-2026-11-13",
+  "note": "Canonical: files/docker/k1/. Base-image pins verified against local images 2026-11-08 via docker image inspect (offline, no pull). Tool pins are build-time downloads verified by sha256sum -c inside the Dockerfile (build fails on mismatch).",
+  "pins": {
+    "python:3.14-slim": "sha256:0514bc76712d64f8bb48adcb95b1ab0d88c69fee95d62fe4c18ee948bee9b1e1",
+    "postgres:17-alpine": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+  },
+  "tools": {
+    "zap": {
+      "version": "2.17.0",
+      "asset": "ZAP_2.17.0_Core.zip",
+      "sha256": "0cb73b7f72d12c263fb61de304edb82a455d7aa4e1813c216c061765c306f5b7",
+      "path": "/opt/zap"
+    },
+    "temurin-jre": {
+      "version": "21.0.13+9",
+      "asset": "OpenJDK21U-jre_x64_linux_hotspot_21.0.13_9.tar.gz",
+      "sha256": "a535a1df9c6284d9618872984e026ae0352d1f7e9e0605425c0e6114f47351dd",
+      "path": "/opt/java"
+    },
+    "python": {
+      "schemathesis": "4.33.4",
+      "hypothesis": "6.170.15",
+      "zizmor": "1.32.0",
+      "radon": "6.0.1",
+      "bandit": "1.9.4",
+      "lock": "files/docker/k1/requirements.lock"
+    }
+  },
+  "source": {
+    "python:3.14-slim": "docker image inspect python:3.14-slim -> RepoDigests [python@sha256:0514bc76712d64f8bb48adcb95b1ab0d88c69fee95d62fe4c18ee948bee9b1e1], Id same, 178MB, CreatedAt ~2 weeks ago",
+    "postgres:17-alpine": "docker image inspect postgres:17-alpine -> RepoDigests [postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24], Id same, 423MB, CreatedAt ~7 weeks ago",
+    "zap": "GitHub release asset digest for v2.17.0 (ZAP_2.17.0_Core.zip), re-verified locally: sha256sum zap-core.zip = 0cb73b7f72d12c263fb61de304edb82a455d7aa4e1813c216c061765c306f5b7",
+    "temurin-jre": "Adoptium API package checksum for jdk-21.0.13+9, image_type=jre, os=linux, arch=x64"
+  },
+  "pending": []
+}

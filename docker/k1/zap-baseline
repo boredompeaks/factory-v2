@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Non-interactive ZAP baseline scan for the K1 image (offline, no docker).
+
+`gate_run.py` invokes this as:
+
+    zap-baseline -t <target-url> -J <report.json> -I
+
+The flags mirror the official `zap-baseline.py` (same names), so the gate does
+not need a special case. ZAP runs headless via `zap.sh -cmd -quickurl`: spider,
+then passive scan, then a JSON report. No active scanning and no add-on or
+update download, so the runtime container needs no network beyond the target.
+
+ZAP's home directory (`-dir`) must be writable even though the rootfs is
+read-only. Resolution order: $ZAP_WORK_DIR, /work/zap (tmpfs), /tmp/zap,
+then a fresh temporary directory. The JSON report path is created by the
+caller; this script only requires that its parent directory exists.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+
+ZAP_SH = os.environ.get("ZAP_SH", "/opt/zap/zap.sh")
+ZAP_JVM_ARGS = os.environ.get("ZAP_JVM_ARGS", "-Xmx320m")
+EXIT_OK = 0
+EXIT_CONFIG = 2
+
+
+def _writable_dir(path: str) -> bool:
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        return False
+    return os.path.isdir(path) and os.access(path, os.W_OK | os.X_OK)
+
+
+def pick_work_dir() -> str:
+    candidates = []
+    override = os.environ.get("ZAP_WORK_DIR")
+    if override:
+        candidates.append(override)
+    candidates += ["/work/zap", "/tmp/zap"]
+    for candidate in candidates:
+        if _writable_dir(candidate):
+            return candidate
+    return tempfile.mkdtemp(prefix="zap-home-")
+
+
+def build_argv(target: str, report: str, work_dir: str, extra: str) -> list[str]:
+    argv = [
+        ZAP_SH,
+        ZAP_JVM_ARGS,
+        "-cmd",
+        "-dir",
+        work_dir,
+        "-quickurl",
+        target,
+        "-quickout",
+        report,
+        "-quickprogress",
+        # Loopback-free surface, no API key, no recovery log, no update checks:
+        # the runtime container has no egress.
+        "-config",
+        "api.disablekey=true",
+        "-config",
+        "database.recoverylog=false",
+        "-config",
+        "startup.checkForUpdates=false",
+    ]
+    if extra:
+        argv.extend(shlex.split(extra))
+    return argv
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="zap-baseline",
+        description="Run a ZAP baseline (passive) scan and write a JSON report.",
+        add_help=True,
+    )
+    parser.add_argument("-t", "--target", required=True, help="target base URL")
+    parser.add_argument("-J", "--json-out", required=True, help="JSON report path")
+    parser.add_argument(
+        "-I",
+        dest="ignore_warnings",
+        action="store_true",
+        help="accepted for zap-baseline.py parity; alerts never change exit code",
+    )
+    parser.add_argument("-T", "--timeout", type=int, default=0, help="seconds (0 = no limit)")
+    parser.add_argument("-m", "--mins", type=int, default=1, help="minutes to spider (parity)")
+    parser.add_argument("-z", dest="zap_options", default="", help="extra zap.sh options")
+    args, unknown = parser.parse_known_args(argv)
+    if unknown:
+        print(
+            "zap-baseline: ignoring unsupported options: " + " ".join(unknown),
+            file=sys.stderr,
+        )
+
+    if not os.path.isfile(ZAP_SH):
+        print(f"zap-baseline: ZAP wrapper not found at {ZAP_SH}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    report_dir = os.path.dirname(os.path.abspath(args.json_out))
+    if not os.path.isdir(report_dir) or not os.access(report_dir, os.W_OK):
+        print(f"zap-baseline: report directory is not writable: {report_dir}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    work_dir = pick_work_dir()
+    argv_out = build_argv(args.target, args.json_out, work_dir, args.zap_options)
+    print("zap-baseline: " + " ".join(shlex.quote(part) for part in argv_out), file=sys.stderr)
+    try:
+        process = subprocess.run(
+            argv_out,
+            stdout=sys.stderr,
+            stderr=subprocess.STDOUT,
+            timeout=args.timeout or None,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(f"zap-baseline: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    if process.returncode != 0:
+        print(f"zap-baseline: zap.sh exited {process.returncode}", file=sys.stderr)
+        return process.returncode
+    if not os.path.isfile(args.json_out):
+        print(f"zap-baseline: no report written to {args.json_out}", file=sys.stderr)
+        return EXIT_CONFIG
+    return EXIT_OK
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

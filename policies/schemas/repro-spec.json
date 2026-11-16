@@ -1,0 +1,219 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "repro-spec.json",
+  "title": "repro-spec",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "repro_id",
+    "kind",
+    "engine",
+    "ref",
+    "command",
+    "runs",
+    "timeout_s",
+    "expected"
+  ],
+  "properties": {
+    "schema": {
+      "const": "repro-spec/1"
+    },
+    "repro_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "pytest",
+        "script",
+        "race_schedule",
+        "static_match",
+        "http_request",
+        "schema_fuzz",
+        "dast_finding"
+      ]
+    },
+    "engine": {
+      "type": "string",
+      "enum": [
+        "none",
+        "sqlite",
+        "postgres",
+        "k1"
+      ]
+    },
+    "fail_kind": {
+      "type": "string",
+      "enum": [
+        "ASSERTION",
+        "IMPORT",
+        "COLLECTION",
+        "ERROR",
+        "TIMEOUT",
+        "UNKNOWN"
+      ],
+      "description": "Optional failure classification for the base run. ASSERTION is the only kind that proves the acceptance property; any other value is not base-red for that property."
+    },
+    "ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "runs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timeout_s": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3600
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "head",
+        "base"
+      ],
+      "properties": {
+        "head": {
+          "type": "string",
+          "enum": [
+            "REPRODUCED",
+            "NOT_REPRODUCED"
+          ],
+          "description": "Head outcome. For a fix, head is NOT_REPRODUCED (bug absent after patch); for a regression, head is REPRODUCED."
+        },
+        "base": {
+          "type": "string",
+          "enum": [
+            "REPRODUCED",
+            "NOT_REPRODUCED"
+          ],
+          "description": "Base outcome. For a fix, base is REPRODUCED (bug present before patch); for a regression, base is NOT_REPRODUCED."
+        }
+      },
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "head",
+              "base"
+            ],
+            "properties": {
+              "head": {
+                "const": "REPRODUCED"
+              },
+              "base": {
+                "const": "REPRODUCED"
+              }
+            }
+          },
+          "description": "Meaningful combos only: head REPRODUCED + base REPRODUCED (uninformative, bug present both sides) is rejected."
+        },
+        {
+          "not": {
+            "required": [
+              "head",
+              "base"
+            ],
+            "properties": {
+              "head": {
+                "const": "NOT_REPRODUCED"
+              },
+              "base": {
+                "const": "NOT_REPRODUCED"
+              }
+            }
+          },
+          "description": "Meaningful combos only: head NOT_REPRODUCED + base NOT_REPRODUCED (uninformative, bug absent both sides) is rejected. Only differing combos (fix: base REPRODUCED/head NOT_REPRODUCED; regression: base NOT_REPRODUCED/head REPRODUCED) are meaningful."
+        }
+      ]
+    },
+    "schedule": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "repetitions": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pattern": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fixture_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "race_schedule"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "schedule"
+            ]
+          },
+          {
+            "required": [
+              "repetitions"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "static_match"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "file",
+          "pattern"
+        ]
+      }
+    }
+  ]
+}

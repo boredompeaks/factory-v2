@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "version": 1,
+  "mode": "enforce",
+  "denyOnPolicyError": true,
+  "minimumPromptDefenseGrade": "B",
+  "additionalContext": "Factory tree is read-only. Worktrees are writable within task scope. Proofs are computed by the harness; release requires Proof-Root.",
+  "toolPolicies": {
+    "defaultEffect": "allow",
+    "allowedTools": [
+      "read",
+      "glob",
+      "grep",
+      "list",
+      "bash",
+      "shell",
+      "write",
+      "edit",
+      "patch",
+      "multiedit",
+      "webfetch",
+      "websearch",
+      "skill",
+      "task",
+      "execute"
+    ],
+    "blockedTools": [],
+    "reviewTools": []
+  },
+  "blockedToolCalls": [
+    {
+      "id": "download-and-execute",
+      "tool": "bash",
+      "effect": "deny",
+      "reason": "Block downloading and executing scripts in one command.",
+      "commandPatterns": [
+        {
+          "source": "\\b(curl|wget)\\b[^\\n\\r|>]*\\|[^\\n\\r]*(sh|bash)",
+          "flags": "i"
+        }
+      ]
+    },
+    {
+      "id": "metadata-access",
+      "tool": "bash",
+      "effect": "deny",
+      "reason": "Block cloud metadata service access.",
+      "commandPatterns": [
+        {
+          "source": "https?://(169\\.254\\.169\\.254|100\\.100\\.100\\.200|metadata\\.google\\.internal)",
+          "flags": "i"
+        }
+      ]
+    },
+    {
+      "id": "secret-read",
+      "tool": "bash",
+      "effect": "deny",
+      "reason": "Block direct reads of secrets and credentials.",
+      "commandPatterns": [
+        {
+          "source": "\\b(cat|less|more|head|tail|sed|awk)\\b[^\\n\\r]*(\\.env(\\.[\\w-]+)?|id_rsa|id_ed25519|~?/\\.ssh|\\.aws|\\.config/gh/hosts\\.yml)",
+          "flags": "i"
+        }
+      ]
+    },
+    {
+      "id": "recursive-delete",
+      "tool": "bash",
+      "effect": "deny",
+      "reason": "Block recursive force deletion.",
+      "commandPatterns": [
+        {
+          "source": "\\brm\\b[^\\n\\r]*(?:-r[^\\n\\r]*-f|-f[^\\n\\r]*-r|-rf|-fr)",
+          "flags": "i"
+        }
+      ]
+    }
+  ],
+  "directResourcePolicies": {
+    "pathRules": [
+      {
+        "id": "factory-tree",
+        "effect": "deny",
+        "operation": "write",
+        "pathPatterns": [
+          {
+            "source": "^/home/boredompeaks/umairnlp(/|$)",
+            "flags": "i"
+          },
+          {
+            "source": "^/home/boredompeaks/factory-v2(/|$)",
+            "flags": "i"
+          }
+        ],
+        "reason": "The factory tree is read-only."
+      },
+      {
+        "id": "factory-policy-tree",
+        "effect": "deny",
+        "operation": "write",
+        "pathPatterns": [
+          {
+            "source": "(^|/)policies(/|$)",
+            "flags": "i"
+          }
+        ],
+        "reason": "The factory policy tree is read-only."
+      },
+      {
+        "id": "secrets",
+        "effect": "deny",
+        "operation": "read",
+        "pathPatterns": [
+          {
+            "source": "(^|/)\\.env[^/]*$",
+            "flags": "i"
+          },
+          {
+            "source": "(^|/)\\.ssh(/|$)",
+            "flags": "i"
+          },
+          {
+            "source": "(^|/)(id_rsa|id_ed25519|\\.netrc|\\.git-credentials|\\.npmrc|\\.pypirc)$",
+            "flags": "i"
+          }
+        ],
+        "reason": "Secret files are not readable."
+      },
+      {
+        "id": "evidence",
+        "effect": "deny",
+        "operation": "write",
+        "pathPatterns": [
+          {
+            "source": "(^|/)evidence(/|$)",
+            "flags": "i"
+          },
+          {
+            "source": "^/home/boredompeaks/\\.factory(/|$)",
+            "flags": "i"
+          }
+        ],
+        "reason": "Evidence is written by the harness, not the agent."
+      },
+      {
+        "id": "quality-ledger",
+        "effect": "deny",
+        "operation": "write",
+        "pathPatterns": [
+          {
+            "source": "(^|/)quality/ledger(/|$)",
+            "flags": "i"
+          }
+        ],
+        "reason": "Ledger paths are not directly accessible."
+      }
+    ]
+  }
+}

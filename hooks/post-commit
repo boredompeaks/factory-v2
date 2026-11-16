@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+git_dir=$(git rev-parse --absolute-git-dir)
+repo=$(git rev-parse --show-toplevel)
+sha=$(git rev-parse HEAD)
+tree=$(git rev-parse 'HEAD^{tree}')
+task_file="$repo/task.json"
+task_id=$(git log -1 --format=%B | sed -nE 's/^[[:space:]]*Task-Id:[[:space:]]*([^[:space:]]+)[[:space:]]*$/\1/p' | head -n1)
+task_root=${FACTORY_TASKS_ROOT:-"${FACTORY_HOME:-"$HOME/.factory"}/tasks"}
+if [[ ! -f "$task_file" && -n "$task_id" && -f "$task_root/$task_id/task.json" ]]; then
+  task_file="$task_root/$task_id/task.json"
+fi
+scope_hash=""
+if [[ -f "$task_file" ]]; then
+  readarray -t task_data < <(python3 - "$task_file" <<'PY'
+import hashlib, json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    task = json.load(f)
+scope = task.get("scope", [])
+canonical = json.dumps(scope, sort_keys=True, separators=(",", ":")).encode()
+print(task.get("task_id", ""))
+print(hashlib.sha256(canonical).hexdigest())
+PY
+)
+  task_id=${task_data[0]:-$task_id}
+  scope_hash=${task_data[1]:-}
+fi
+timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+evidence_file="$git_dir/factory-evidence.jsonl"
+python3 - "$evidence_file" "$sha" "$tree" "$task_id" "$scope_hash" "$timestamp" <<'PY'
+import json, sys
+path, sha, tree, task_id, scope_hash, timestamp = sys.argv[1:]
+record = {"sha": sha, "tree": tree, "task_id": task_id,
+          "scope_hash": scope_hash, "timestamp": timestamp}
+with open(path, "a", encoding="utf-8") as f:
+    f.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+PY

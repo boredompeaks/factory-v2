@@ -1,0 +1,44 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "orchestrator",
+  "mcp": {
+    "servers": {
+      "basemind": {
+        "type": "local",
+        "command": [
+          "/home/boredompeaks/.local/bin/basemind",
+          "serve"
+        ],
+        "cwd": ".",
+        "disabled": false,
+        "codemode": false,
+        "timeout": {
+          "startup": 120000,
+          "catalog": 30000,
+          "execution": 120000
+        }
+      },
+      "chrome-devtools": {
+        "type": "local",
+        "command": [
+          "chrome-devtools-mcp",
+          "--isolated",
+          "--viewport",
+          "1280x720"
+        ],
+        "disabled": false
+      },
+      "context7": {
+        "type": "remote",
+        "url": "https://mcp.context7.com/mcp",
+        "disabled": false
+      }
+    }
+  },
+  "plugin": [
+    "./plugins/agt.js"
+  ],
+  "experimental": {
+    "subagent_depth": 2
+  }
+}

@@ -1,0 +1,185 @@
+===== cli ses_e214e003bffenBUm7R31oKpLb3 =====
+ADD /home/boredompeaks/factory-v2/factory/__init__.py
+ADD /home/boredompeaks/factory-v2/factory/util.py
+ADD /home/boredompeaks/factory-v2/factory/state.py
+ADD /home/boredompeaks/factory-v2/factory/task.py
+ADD /home/boredompeaks/factory-v2/factory/scope.py
+ADD /home/boredompeaks/factory-v2/factory/proof.py
+ADD /home/boredompeaks/factory-v2/factory/gate.py
+ADD /home/boredompeaks/factory-v2/factory/release.py
+PATCH /home/boredompeaks/factory-v2/factory/task.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/gate.py (4 hunks)
+ADD /home/boredompeaks/factory-v2/factory/cli.py
+PATCH /home/boredompeaks/factory-v2/factory/cli.py (9 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/cli.py (3 hunks)
+ADD /home/boredompeaks/factory-v2/bin/factory
+ADD /home/boredompeaks/factory-v2/schemas/task.json
+ADD /home/boredompeaks/factory-v2/schemas/proof.json
+PATCH /home/boredompeaks/factory-v2/factory/util.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/gate.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/scope.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/gate.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/task.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/gate.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (10 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/cli.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/util.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/task.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/cli.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (5 hunks)
+PATCH /home/boredompeaks/factory-v2/schemas/proof.json (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/cli.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/state.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/task.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/release.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/gate.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/cli.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/release.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/cli.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/task.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/release.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/release.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/state.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/task.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/state.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/task.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/proof.py (4 hunks)
+===== checks ses_e214e0037ffe7TK8Ou7VVzByD2 =====
+ADD /home/boredompeaks/factory-v2/factory/checks/__init__.py
+ADD /home/boredompeaks/factory-v2/factory/checks/static.py
+ADD /home/boredompeaks/factory-v2/factory/checks/tests.py
+ADD /home/boredompeaks/factory-v2/factory/checks/mutation.py
+ADD /home/boredompeaks/factory-v2/factory/checks/fuzz.py
+ADD /home/boredompeaks/factory-v2/factory/checks/dast.py
+ADD /home/boredompeaks/factory-v2/schemas/gate.json
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (5 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/mutation.py (10 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (6 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/fuzz.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/dast.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/__init__.py (5 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/__init__.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (5 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/mutation.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/dast.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/schemas/gate.json (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/dast.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/mutation.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/fuzz.py (4 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/dast.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/__init__.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (5 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/mutation.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (7 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/mutation.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/tests.py (2 hunks)
+PATCH /home/boredompeaks/factory-v2/factory/checks/static.py (4 hunks)
+===== rewrite ses_e214e0023ffejjfLu2oYGGUc4d =====
+SHELL[rewrite] cat > /home/boredompeaks/factory-v2/.rewrite_factory_v2.py <<'PY'
+PATCH /home/boredompeaks/factory-v2/policies/gate.json (2 hunks)
+ADD /home/boredompeaks/factory-v2/factory/policy_cards.py
+SHELL[rewrite] python - <<'PY'
+SHELL[rewrite] python - <<'PY'
+SHELL[rewrite] python - <<'PY'
+SHELL[rewrite] python - <<'PY'
+SHELL[rewrite] python - <<'PY'
+PATCH /home/boredompeaks/factory-v2/.agt/policy.json (2 hunks)
+SHELL[rewrite] python - <<'PY'
+PATCH /home/boredompeaks/factory-v2/sop/release-engineer/20-merge.md (2 hunks)
+SHELL[rewrite] python - <<'PY'
+===== hooks ses_e214e001dffedXQy4uRjPD3uxY =====
+ADD /home/boredompeaks/factory-v2/bin/factory-run
+ADD /home/boredompeaks/factory-v2/hooks/pre-commit
+ADD /home/boredompeaks/factory-v2/hooks/commit-msg
+ADD /home/boredompeaks/factory-v2/hooks/post-commit
+ADD /home/boredompeaks/factory-v2/hooks/install.sh
+ADD /home/boredompeaks/factory-v2/README.md
+ADD /home/boredompeaks/factory-v2/tests/smoke.sh
+PATCH /home/boredompeaks/factory-v2/tests/smoke.sh (1 hunks)
+ADD /home/boredompeaks/factory-v2/tests/test_cli.py
+PATCH /home/boredompeaks/factory-v2/tests/test_cli.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/bin/factory-run (1 hunks)
+PATCH /home/boredompeaks/factory-v2/hooks/install.sh (1 hunks)
+PATCH /home/boredompeaks/factory-v2/tests/test_cli.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/tests/test_cli.py (3 hunks)
+PATCH /home/boredompeaks/factory-v2/tests/test_cli.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/tests/smoke.sh (2 hunks)
+PATCH /home/boredompeaks/factory-v2/tests/test_cli.py (1 hunks)
+PATCH /home/boredompeaks/factory-v2/tests/smoke.sh (2 hunks)
+PATCH /home/boredompeaks/factory-v2/tests/test_cli.py (5 hunks)
+PATCH /home/boredompeaks/factory-v2/hooks/post-commit (1 hunks)
+===== main ses_e25f231a6ffew6tj3XborxECa0 =====
+SKIP outside: /home/boredompeaks/factory-v2-plan.md
+WRITE /home/boredompeaks/factory-v2-plan.md
+WRITE /home/boredompeaks/factory-v2/DESIGN.md
+EDIT /home/boredompeaks/factory-v2/DESIGN.md
+WRITE /home/boredompeaks/factory-v2/MANIFEST.md
+SHELL[main] cd /home/boredompeaks/factory-v2 && python3 - <<'PY'
+SHELL[main] cd /home/boredompeaks/factory-v2 && python3 - <<'PY'
+SHELL[main] cd /home/boredompeaks/factory-v2 && python3 - <<'PY'
+EDIT /home/boredompeaks/factory-v2/DESIGN.md
+EDIT /home/boredompeaks/factory-v2/DESIGN.md
+EDIT /home/boredompeaks/factory-v2/factory/gate.py
+EDIT /home/boredompeaks/factory-v2/factory/gate.py
+EDIT /home/boredompeaks/factory-v2/factory/gate.py
+EDIT /home/boredompeaks/factory-v2/factory/cli.py
+EDIT /home/boredompeaks/factory-v2/factory/cli.py
+EDIT /home/boredompeaks/factory-v2/factory/release.py
+EDIT /home/boredompeaks/factory-v2/factory/release.py
+EDIT /home/boredompeaks/factory-v2/factory/proof.py
+EDIT /home/boredompeaks/factory-v2/factory/proof.py
+EDIT /home/boredompeaks/factory-v2/factory/util.py
+WRITE /home/boredompeaks/factory-v2/tests/smoke.sh
+EDIT /home/boredompeaks/factory-v2/factory/gate.py
+EDIT /home/boredompeaks/factory-v2/factory/gate.py
+EDIT /home/boredompeaks/factory-v2/factory/gate.py
+EDIT /home/boredompeaks/factory-v2/factory/util.py
+EDIT /home/boredompeaks/factory-v2/factory/task.py
+EDIT /home/boredompeaks/factory-v2/factory/task.py
+EDIT /home/boredompeaks/factory-v2/factory/cli.py
+EDIT /home/boredompeaks/factory-v2/factory/cli.py
+EDIT /home/boredompeaks/factory-v2/factory/scope.py
+EDIT /home/boredompeaks/factory-v2/factory/cli.py
+EDIT /home/boredompeaks/factory-v2/factory/cli.py
+EDIT /home/boredompeaks/factory-v2/README.md
+EDIT /home/boredompeaks/factory-v2/factory/proof.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/static.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/__init__.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/__init__.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/__init__.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/static.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/static.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/static.py
+EDIT /home/boredompeaks/factory-v2/factory/checks/mutation.py
+EDIT /home/boredompeaks/factory-v2/factory/release.py
+SHELL[main] set -e
+SHELL[main] cd /home/boredompeaks/factory-v2 && python3 - <<'PY'
+WRITE /home/boredompeaks/factory-v2/STATUS.md
+EDIT /home/boredompeaks/factory-v2/factory/cli.py
+SKIP outside: /home/boredompeaks/factory-v2-recover.py
+WRITE /home/boredompeaks/factory-v2-recover.py

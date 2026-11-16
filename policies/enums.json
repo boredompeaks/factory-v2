@@ -1,0 +1,319 @@
+{
+  "version": 2,
+  "scope": "live",
+  "description": "Single canonical token registry for the role SOPs. SOPs use only the tokens in this file. The schemas under files/policies/schemas/ are authoritative and are not modified by this registry; schema_value records the wire value where a canonical SOP token serializes differently.",
+  "families": {
+    "decision": {
+      "tokens": [
+        "DISPATCH",
+        "HOLD",
+        "HALT",
+        "RECORD"
+      ],
+      "schema_source": "files/policies/schemas/orchestrator-decision.json#/properties/action",
+      "status": "matches-schema"
+    },
+    "verdict": {
+      "tokens": [
+        "PASS",
+        "BLOCK",
+        "INCONCLUSIVE",
+        "REFUSED"
+      ],
+      "schema_source": "files/policies/schemas/auditor-verdict.json#/properties/verdict and #/properties/result_type",
+      "schema_value": {
+        "REFUSED": "result_type=REFUSED (refusal_code carries the cause)"
+      },
+      "status": "compatible-schema: REFUSED is a result_type token in the verdict schema"
+    },
+    "result": {
+      "tokens": [
+        "DONE",
+        "BLOCKED",
+        "REFUSED",
+        "NOT_RUN"
+      ],
+      "schema_source": "files/policies/schemas/builder-result.json#/properties/result_type; files/policies/schemas/hacker-result.json#/properties/result_type; files/policies/schemas/release-result.json#/properties/result_type; files/policies/schemas/crouton-result.json#/properties/status",
+      "schema_value": {
+        "DONE": "RESULT (builder, hacker, release); DONE (crouton status)",
+        "BLOCKED": "BLOCKED (builder and crouton); hacker and release use REFUSED",
+        "REFUSED": "REFUSED",
+        "NOT_RUN": "no result_type; use the check or catalog outcome field"
+      },
+      "status": "conflict-recorded: DONE serializes as result_type RESULT for builder, hacker, and release, and as status DONE for crouton; NOT_RUN is not a result_type"
+    },
+    "check": {
+      "tokens": [
+        "PASS",
+        "FAIL",
+        "NOT_RUN"
+      ],
+      "schema_source": "files/policies/schemas/auditor-verdict.json#/$defs/check/properties/outcome",
+      "catalog_only": {
+        "NOT_APPLICABLE": "files/policies/schemas/auditor-verdict.json#/$defs/catalog_entry/properties/outcome"
+      },
+      "status": "schema-matched: check.outcome is PASS/FAIL/NOT_RUN; NOT_APPLICABLE is catalog-only and is never a check result"
+    },
+    "catalog": {
+      "tokens": [
+        "REFUTED",
+        "REPRODUCED",
+        "NOT_RUN",
+        "NOT_APPLICABLE"
+      ],
+      "schema_source": "files/policies/schemas/hacker-result.json#/$defs/catalog_item/properties/outcome; files/policies/schemas/auditor-verdict.json#/$defs/catalog_entry/properties/outcome",
+      "schema_value": {
+        "NOT_RUN": "catalog_item.outcome=NOT_RUN",
+        "NOT_APPLICABLE": "auditor catalog_entry only; the hacker never claims it, and an applicable item claimed NOT_APPLICABLE becomes NOT_RUN"
+      },
+      "status": "schema-matched: REFUTED/REPRODUCED are hacker outcomes; NOT_APPLICABLE is auditor-side only. REPRODUCED is a shared spelling with the drain state, not a shared field."
+    },
+    "repro_expected": {
+      "tokens": [
+        "REPRODUCED",
+        "NOT_REPRODUCED"
+      ],
+      "schema_source": "files/policies/schemas/repro-spec.json#/properties/expected/properties/head and #/properties/expected/properties/base",
+      "status": "matches-schema: the differential expected pair; fix is base REPRODUCED / head NOT_REPRODUCED, regression is the inverse"
+    },
+    "release": {
+      "tokens": [
+        "MERGED",
+        "REFUSED",
+        "HOLD"
+      ],
+      "schema_source": "files/policies/schemas/release-result.json#/properties/outcome and #/properties/result_type",
+      "schema_value": {
+        "MERGED": "outcome=MERGED",
+        "REFUSED": "result_type=REFUSED (refusal_code carries the cause)",
+        "HOLD": "orchestrator decision=HOLD; not a release-result outcome"
+      },
+      "status": "conflict-recorded: HOLD is an orchestrator disposition, not a release-result outcome"
+    },
+    "drain": {
+      "tokens": [
+        "OPEN",
+        "REPRODUCED",
+        "UNREPRODUCIBLE",
+        "CLUSTERED",
+        "REPAIRED",
+        "VERIFIED",
+        "CLOSED"
+      ],
+      "schema_source": "files/policies/schemas/drain-record.json#/properties/state",
+      "status": "matches-schema"
+    },
+    "severity": {
+      "tokens": [
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "schema_source": "files/policies/schemas/finding.json#/properties/severity; files/policies/severity.json#/severity_scale",
+      "status": "schema-wins: proposed P0 and P4 are absent from both the schema and severity.json and are not used"
+    },
+    "bug_report": {
+      "tokens": [
+        "COMPLETE",
+        "PARTIAL",
+        "BLOCKED"
+      ],
+      "schema_source": "files/policies/schemas/bug-report.json#/properties/verdict; files/policies/schemas/compliance-result.json#/properties/verdict",
+      "status": "matches-schema: the same coverage verdict is used by the bug report and the compliance result"
+    },
+    "phase": {
+      "tokens": [
+        "BUILD",
+        "GATE"
+      ],
+      "schema_source": "files/policies/phases.json#/phases",
+      "status": "matches-policy"
+    },
+    "lane": {
+      "tokens": [
+        "lane/a",
+        "lane/b",
+        "spec-comp"
+      ],
+      "schema_source": "files/policies/phases.json#/permanent_lanes and #/integration_lane",
+      "status": "matches-policy",
+      "schema_value": {
+        "null": "lane-less GATE release dispatch; a lane-required BUILD target with null is refused"
+      }
+    },
+    "dispatch_target": {
+      "tokens": [
+        "builder",
+        "auditor",
+        "release-engineer",
+        "compliance",
+        "crouton-alpha",
+        "none"
+      ],
+      "schema_source": "files/policies/schemas/orchestrator-decision.json#/properties/target",
+      "status": "matches-schema"
+    },
+    "role": {
+      "tokens": [
+        "orchestrator",
+        "builder",
+        "auditor",
+        "hacker",
+        "release-engineer",
+        "compliance",
+        "crouton"
+      ],
+      "schema_source": "files/policies/schemas/capability.json#/properties/role",
+      "status": "matches-schema",
+      "schema_value": {
+        "crouton": "canonical proof store/CLI role; the OpenCode agent id is crouton-alpha"
+      }
+    },
+    "step": {
+      "tokens": [
+        "preflight",
+        "resolve",
+        "classify",
+        "capability",
+        "prebuild",
+        "build",
+        "audit",
+        "route",
+        "release",
+        "postmerge",
+        "lesson",
+        "drain"
+      ],
+      "schema_source": "files/policies/schemas/stages.json#/enum",
+      "status": "matches-schema"
+    },
+    "check_runner": {
+      "tokens": [
+        "builder",
+        "auditor",
+        "hacker",
+        "release-engineer",
+        "ci"
+      ],
+      "schema_source": "files/policies/schemas/auditor-verdict.json#/$defs/check/properties/runner",
+      "status": "matches-schema"
+    },
+    "fault": {
+      "tokens": [
+        "TOOL_TIMEOUT",
+        "TOOL_CRASH",
+        "TOOL_UNAVAILABLE",
+        "SANDBOX_ERROR",
+        "ENGINE_UNAVAILABLE",
+        "DB_CONNECTION_FAILED",
+        "K1_UP_FAILED",
+        "FIXTURE_MISSING",
+        "CACHE_CORRUPT",
+        "SIGNATURE_VERIFY_ERROR",
+        "LEDGER_IO_ERROR",
+        "OOM_KILLED",
+        "NETWORK_BLOCKED",
+        "UNSUPPORTED_ENGINE",
+        "INTERRUPTED"
+      ],
+      "schema_source": "files/policies/schemas/fault-codes.json#/properties/codes",
+      "status": "matches-schema"
+    },
+    "auditor_refusal": {
+      "tokens": [
+        "CAPABILITY_INVALID",
+        "STATE_MOVED",
+        null
+      ],
+      "schema_source": "files/policies/schemas/auditor-verdict.json#/properties/refusal_code",
+      "status": "matches-schema"
+    },
+    "release_refusal": {
+      "tokens": [
+        "SIG_INVALID",
+        "POLICY_DRIFT",
+        "VERDICT_NOT_PASS",
+        "STATE_MISMATCH",
+        "DIRTY_TREE",
+        "BASE_MOVED",
+        "PROTECTION_UNVERIFIED",
+        "GUARD_REMOVED",
+        "CHECKS_FAILED",
+        "CHECKS_TIMEOUT",
+        "CHECKS_UNMAPPED",
+        "MERGE_REJECTED",
+        null
+      ],
+      "schema_source": "files/policies/schemas/release-result.json#/properties/refusal_code",
+      "status": "matches-schema"
+    },
+    "hacker_refusal": {
+      "tokens": [
+        "SIG_INVALID",
+        "EXPLOIT_ABORT_CONTAMINATED",
+        "VARIANT_MISMATCH",
+        "STATE_MISMATCH",
+        null
+      ],
+      "schema_source": "files/policies/schemas/hacker-result.json#/properties/refusal_code",
+      "status": "matches-schema"
+    },
+    "reason_code": {
+      "tokens": [
+        "OK",
+        "TIER_RAISED",
+        "DIRTY_TREE",
+        "HEAD_MOVED",
+        "UNKNOWN_WORKTREE",
+        "SCOPE_VIOLATION",
+        "SIG_INVALID",
+        "SCHEMA_INVALID",
+        "CTRL_MISSING",
+        "CTRL_FAILED",
+        "NO_ACCEPTANCE_REF",
+        "BUDGET_EXCEEDED",
+        "CYCLES_EXHAUSTED",
+        "RISK_RECORD_MISSING",
+        "VERDICT_STALE",
+        "CHECKS_INCOMPLETE",
+        "TREE_MISMATCH",
+        "CI_FAILED",
+        "CI_TIMEOUT",
+        "CI_PENDING",
+        "SUBAGENT_TIMEOUT",
+        "LEDGER_CONFLICT",
+        "BUILDER_BLOCKED",
+        "RELEASE_REFUSED",
+        "POLICY_DRIFT",
+        "POLICY_DRIFT_SHADOW",
+        "ADDED_TEST_NOT_RED",
+        "NON_FALSIFIABLE",
+        "WEAK_ORACLE",
+        "GUARD_REMOVED",
+        "ARCH_VIOLATION",
+        "AUTHZ_MATRIX_GAP",
+        "BUDGET_ZERO_PROGRESS",
+        "DRAIN_UNREPRODUCIBLE",
+        "DRAIN_STAGE_MISSING",
+        "SECRET_LEAK",
+        "GATE_CONTROL_FAILURE",
+        "CONTROL_UNDERCOUNT",
+        "SUITE_FAILURE"
+      ],
+      "schema_source": "files/policies/schemas/orchestrator-decision.json#/properties/reason_code",
+      "status": "matches-schema"
+    }
+  },
+  "non_enum_labels": {
+    "SHIP": "Retired label. The draft used SHIP as a verdict synonym; all SOPs now use PASS.",
+    "compliance status": "IMPLEMENTED/PARTIAL/MISSING/DEVIATES/NOT-APPLICABLE/DEFERRED are compliance report statuses, not one of the registered enum families.",
+    "NON_FALSIFIABLE": "A catalog classification for a base-green exploit spec, not a result token.",
+    "FAILED_PUSH": "A recorded push subcase; the verdict remains the registered verdict token."
+  },
+  "conflicts": [
+    "result: proposed DONE is serialized as result_type RESULT; NOT_RUN is a check/catalog outcome, not a result_type.",
+    "check: NOT_APPLICABLE is catalog-only; it is never a check outcome. A non-applicable check records NOT_RUN and cites the condition in evidence_ref.",
+    "release: proposed HOLD is an orchestrator decision, not a release-result outcome; REFUSED is a result_type.",
+    "severity: proposed P0/P4 dropped because files/policies/schemas/finding.json and files/policies/severity.json define P1/P2/P3 only."
+  ]
+}
