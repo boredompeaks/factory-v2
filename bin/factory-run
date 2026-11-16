@@ -59,7 +59,7 @@ cache_dir="$HOME/.cache"
 mkdir -p "$evidence_root" "$opencode_dir" "$cache_dir" "$HOME/.factory" "$HOME/.config/opencode"
 
 args=(
-  --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --dir /evidence
+  --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /evidence
   --bind "$worktree" "$worktree"
   --ro-bind /home/boredompeaks/umairnlp /home/boredompeaks/umairnlp
   --ro-bind "$evidence_root" /evidence
