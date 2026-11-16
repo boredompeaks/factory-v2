@@ -79,6 +79,12 @@ DEFAULT_EXCLUDES = ("admin/**", "__debug__/**", "media/**", "static/**")
 KNOWN_PERMISSIONS = {
     "IsPrivilegedRole": ("CAPABILITY", "staff.manage"),
     "IsAuthenticatedOrSubmittedEmail": ("AUTHENTICATED", None),
+    # accounts.views.IsMfaRequired: the MFA enrollment gate. It rejects an
+    # anonymous caller (requires_mfa(None) is false) and then only lets the
+    # caller act on their own MFA state, so AUTHENTICATED is the correct
+    # declared floor. The class name does not follow the HasX convention, so
+    # the generic derivation cannot infer it.
+    "IsMfaRequired": ("AUTHENTICATED", None),
 }
 
 # Function decorators and in-body gate helpers.  DRF permission classes are
