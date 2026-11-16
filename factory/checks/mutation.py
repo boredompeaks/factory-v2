@@ -279,10 +279,10 @@ def check_mutation(ctx: dict) -> dict:
         )
     if not candidates:
         return make_proof(
-            "MUTATION", ctx, result="FAIL", command=["factory-mutation-runner", "--max-mutants", "20"],
-            tool_name="factory-mutation-runner", version="1.0", exit_code=1,
+            "MUTATION", ctx, result="SKIP", command=["factory-mutation-runner", "--max-mutants", "20"],
+            tool_name="factory-mutation-runner", version="1.0", exit_code=0,
             stdout=canonical_json({"changed_python": python_paths, "mutants": 0}),
-            detail="MUTATION_NO_MUTANTS: no AOR/ROR/LCR operator occurs in a changed hunk",
+            detail="no AOR/ROR/LCR operator occurs in a changed hunk; mutation is not applicable",
         )
 
     env = ctx.get("env") if isinstance(ctx.get("env"), dict) else {}

@@ -163,6 +163,14 @@ def _database_env(engine: str, postgres_url: str | None = None) -> dict[str, str
 def _test_env(root: Path, ctx: dict, engine: str, postgres_url: str | None = None) -> dict[str, str]:
     extra = _database_env(engine, postgres_url)
     extra["PYTEST_ADDOPTS"] = "-p no:cacheprovider"
+    if "DJANGO_SETTINGS_MODULE" not in extra:
+        for settings_file in (
+            root / "backend" / "config" / "settings.py",
+            root / "config" / "settings.py",
+        ):
+            if settings_file.is_file():
+                extra["DJANGO_SETTINGS_MODULE"] = "config.settings"
+                break
     source_roots = [worktree_path(ctx), repo_path(ctx)]
     inherited = []
     ctx_env = ctx.get("env") if isinstance(ctx.get("env"), dict) else {}

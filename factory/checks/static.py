@@ -517,8 +517,16 @@ def check_authz_matrix(ctx: dict) -> dict:
         return make_proof("AUTHZ_MATRIX", ctx, result="FAIL", detail="ctx.worktree is required")
     with tempfile.TemporaryDirectory(prefix="factory-authz-") as tmp:
         output = Path(tmp) / "matrix.json"
+        python = os.fspath(__import__("sys").executable)
+        for candidate in (
+            root / "backend" / "venv" / "bin" / "python",
+            root / "venv" / "bin" / "python",
+        ):
+            if candidate.is_file():
+                python = str(candidate)
+                break
         command = [
-            os.fspath(__import__("sys").executable), str(script),
+            python, str(script),
             "--repo", str(root), "--out", str(output), "--summary",
         ]
         proc = run_process(command, ctx=ctx, cwd=root, timeout=180)
