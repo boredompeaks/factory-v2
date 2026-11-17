@@ -17,6 +17,20 @@
     "meaning": "The task is deliberately stopped with no active work and no active capability. It is not blocked, not failed, and not done. Only a human-authored proof record or owner instruction resumes it; the orchestrator cannot unpark its own decision.",
     "resume": "10-resume.md with the human-authored resume record ref; the resumed task gets a new capability at the live head/tree, never the parked capability."
   },
+  "campaign": {
+    "unit": "release_train",
+    "children_per_train": 1,
+    "parent": "release-engineer",
+    "sweep_parent": "auditor",
+    "scope": "whole_train",
+    "boundary_ref": "policies/phases.json#/release_train",
+    "modes": [
+      "RELEASE",
+      "BUG_FINDING",
+      "DRAIN"
+    ],
+    "statement": "One hacker campaign per release train at the BUILD->GATE boundary. The release-engineer runs once per boundary, not once per task, and spawns exactly one campaign that attacks every task in the train together to find seams between changes. Auditor -> hacker only in BUG_FINDING. Never per task, per flow, or per batch."
+  },
   "modes": {
     "INTAKE": {
       "phase": "BUILD",
@@ -50,7 +64,6 @@
       "roles": [
         "orchestrator",
         "auditor",
-        "hacker",
         "builder"
       ],
       "exit": "delta PASS or a named refusal"
@@ -78,8 +91,7 @@
       "phase": "BUILD",
       "entry_sop": "files/sop/auditor/10-audit.md",
       "roles": [
-        "auditor",
-        "hacker"
+        "auditor"
       ],
       "exit": "auditor-verdict PASS/BLOCK/INCONCLUSIVE/REFUSED"
     },
@@ -87,8 +99,7 @@
       "phase": "BUILD",
       "entry_sop": "files/sop/auditor/15-delta.md",
       "roles": [
-        "auditor",
-        "hacker"
+        "auditor"
       ],
       "exit": "delta verdict for the new head/tree"
     },
@@ -147,7 +158,8 @@
       "entry_sop": "files/sop/orchestrator/50-release.md",
       "roles": [
         "orchestrator",
-        "release-engineer"
+        "release-engineer",
+        "hacker"
       ],
       "exit": "proof-recorded release result MERGED or REFUSED"
     },
@@ -174,7 +186,8 @@
     "INTAKE selects exactly one other mode; INTAKE itself does no work.",
     "RESUME may select any mode except INTAKE; it never invents a task.",
     "RELEASE is the only mode in GATE; ESCALATION and PARK may halt any phase.",
-    "PARK never leaves active work behind: no capability, auditor, K1 run, or builder session remains active."
+    "PARK never leaves active work behind: no capability, auditor, K1 run, or builder session remains active.",
+    "The hacker is dispatched as one campaign per release train at the BUILD->GATE boundary, never per task, per flow, or per batch: the release-engineer is its parent in RELEASE, the auditor in BUG_FINDING; the orchestrator never dispatches it."
   ],
   "orchestrator_targets": [
     "builder",

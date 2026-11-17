@@ -6,6 +6,7 @@
 - refs: last task context, dispatch, verdict, and finding records.
 - Live `git status`, `git rev-parse`, `git log`, `git worktree list`.
 - The task list with ids and statuses.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:orchestrator`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
 **Procedure**
 1. Load check: `factory verify`; then `factory gate`. Stop on FAIL.
 2. Read live state for the named worktree: branch, head, tree, clean. Then read the evidence store position from the last refs. Direct reads under `evidence/**` are denied; use returned record refs, not filesystem paths.
@@ -14,7 +15,7 @@
 5. Rebuild the task table from checkpoint plus evidence store refs: task id, kind, owner, lane, task context, head/tree, status (`done`, `in-flight`, `queued`, `blocked`, `parked`), and next step.
 6. Check continuity: same `lineage_id`; tier may rise, never fall. If the live head differs from the task context head, do not reuse the task context; re-mint from live state.
 7. Select exactly one task: the in-flight task with no final verdict; otherwise the next queued task in priority order. A `parked` task is not selected without a human-authored resume record; do not invent, split, or rename a task to make progress.
-8. Check task context freshness against `policies/phases.json.task_lifecycle` (idle TTL, 6 tasks, 6-hour expiry) and `policy_digest`. Re-mint with `parent_task_id` when stale; keep the remaining allowance and scope.
+8. Check task context freshness against `policies/phases.json.task_lifecycle` (the idle TTL and re-mint triggers are defined there; do not restate the numbers) and `policy_digest`. Re-mint with `parent_task_id` when stale; keep the remaining allowance and scope.
 9. Emit `RECORD` with the recovered refs and the selected task id, then dispatch the owning SOP at its recorded step (`20`-`80`).
 10. If state cannot be reconciled, `HALT`; never guess, reset, clean, or restart from scratch.
 **Routing / handoff**

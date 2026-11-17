@@ -7,6 +7,8 @@ Write the minimal, accurate documentation update under `backend/docs/**` for the
 ## Inputs
 Orchestrator handoff (task_id, scope, output schema ref); task context; docs tree; source named by the task context.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:crouton-alpha`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Load `skills/crouton-alpha/SKILL.md`; validate the read-only `task.json` against its schema. Otherwise refuse and write nothing.
 2. Read live `git status`; read the docs area and the named source with read/grep/glob.

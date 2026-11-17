@@ -91,7 +91,11 @@ services:
       - -c
       - shared_buffers=32MB
       - -c
-      - max_connections=40
+      - max_connections=100
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
     cap_drop: ["ALL"]
     cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
     security_opt: ["no-new-privileges:true"]
@@ -101,8 +105,13 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: 0.5
+          memory: 512M
+          cpus: 1.0
+        # A concurrent-writer probe needs headroom for backends and locks; a
+        # 256M/0.5-cpu server turned contention into connection failures.
+        reservations:
+          memory: 128M
+    memswap_limit: 768m
 
 networks:
   k1-internal:

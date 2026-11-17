@@ -7,6 +7,8 @@ Reconcile the lanes into spec-comp, push it, open or reuse the promotion PR, wat
 ## Inputs
 Promotion-gate result; worktrees list; reconciled head/tree; `policies/ci.json` (base branch, promotion branch, merge method); `policies/tiers.json` (cycle cap); `policies/escalation.json`; `policies/release-predicates.json`; GitHub CLI commands; live `gh api branch protection`.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:release-engineer`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Sync each permanent worktree from origin using Git; stop on dirty/wrong-branch/conflict, push nothing.
 2. Reconcile lane/a then lane/b into spec-comp (`git merge`); capture merge shas, reconciled head/tree. Conflict → REFUSED MERGE_REJECTED.
@@ -19,7 +21,7 @@ Promotion-gate result; worktrees list; reconciled head/tree; `policies/ci.json` 
 9. `gh pr merge` at the pinned head using `policies/ci.json.merge_method` (Q-METHOD), only after required checks pass and Proof-Root is present. No admin/auto-merge/force. `.github/workflows/**` is release-engineer-owned: the builder, auditor, hacker, compliance, and crouton-alpha may not edit it, and no release clears a red check by changing a workflow or the required set.
 
 ## Handoff
-Return the release-result object to the orchestrator only. No peer messaging; builder, auditor, hacker, compliance, and crouton-alpha are not contacted directly. The orchestrator wakes the same release-engineer context for a repaired head; a repair does not mint a second release task context for the same lineage.
+Return the release-result object to the orchestrator only. No peer messaging; builder, compliance, and crouton-alpha are not contacted directly, and the auditor is not contacted directly. The only child this role dispatches is the whole-release-train campaign (`15-campaign.md`); its result is folded into the release record. The orchestrator wakes the same release-engineer context for a repaired head; a repair does not mint a second release task context for the same lineage.
 
 ## Policy refs
 `policies/release-predicates.json`, `policies/ci.json`, `policies/ci-required.json`, `policies/tiers.json`, `policies/branch-protection.json`, `policies/worktree-map.json`, `policies/escalation.json`, `policies/schemas/release-result.json`, `policies/gate.json`.

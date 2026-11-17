@@ -7,6 +7,7 @@
 - Live state: `git status`, `git rev-parse`, `git log`, `git worktree list`.
 - The session's last dispatch/task context/verdict refs.
 - `policies/task-kinds.json`, `policies/risk-map.json`, `policies/dispatch-rules.json`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:orchestrator`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
 **Procedure**
 1. Restate the requested outcome in one sentence. If two outcomes conflict, ask one question; do not guess.
 2. Classify by outcome, not by wording: resume/continue, bugfix, feature, spec-completion, release, drain, evaluate, bug-finding.
@@ -30,7 +31,7 @@
 | hunt bugs, audit a subsystem, AST/data-flow sweep | `80-bug-finding.md` |
 | blocked, conflicting, human-only decision | `90-escalation.md` |
 **Routing / handoff**
-One SOP per turn. Pass `task_id`, task id, lane, head/tree, scope, and acceptance refs; do not paste policy text or role rationale. Every child result returns to the orchestrator. The only subagent-edge in the factory is auditor -> hacker; intake never dispatches a hacker.
+One SOP per turn. Pass `task_id`, task id, lane, head/tree, scope, and acceptance refs; do not paste policy text or role rationale. Every child result returns to the orchestrator. The hacker is dispatched only by the release-engineer at GATE (`sop/release-engineer/15-campaign.md`) and by the auditor in a `BUG_FINDING` sweep (`sop/auditor/30-hacker-relay.md`); intake dispatches neither.
 **Policy refs**
 `policies/task-kinds.json`, `policies/risk-map.json`, `policies/dispatch-rules.json`, `policies/tiers.json`, `policies/schemas/orchestrator-decision.json`.
 **Done / failure codes**

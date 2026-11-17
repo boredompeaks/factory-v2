@@ -7,6 +7,8 @@ Verify a drain cluster is being drained correctly: rows are confirmed, specs fal
 ## Inputs
 Drain task context (cluster_id, stage, rows); drain register rows; `policies/drain.json`; `policies/schemas/drain-record.json`; `policies/schemas/repro-spec.json`; `factory drain validate` output; the `DR-<stage>-<n>` review ids allocated for this cluster.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:compliance`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Validate the task context and stage. Every reviewed item gets a `DR-<stage>-<n>` id (`DR-R1-1`, `DR-R2-2`,...), where `<stage>` is the stage token from `policies/drain.json#stage_order`. `REQ-` ids belong to `10-review.md` and are never minted here; a drain item is never labelled with a bare stage token. Numbering is sequential across the report's clusters, so one report never repeats a `DR-` id.
 2. Clustering: order and row cap per `policies/drain.json#clustering`; splits by locus prefix only.

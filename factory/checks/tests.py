@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import ast
+import contextlib
+import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -13,7 +16,9 @@ import tarfile
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit, urlunsplit
 
+from ..state import load_task
 from ..util import FactoryError, evidence_dir
 from . import (
     canonical_json,
@@ -26,6 +31,7 @@ from . import (
     policy_path,
     read_json,
     repo_path,
+    resource_lease,
     run_process,
     sha256,
     temp_diff,
@@ -140,23 +146,123 @@ def _service_reachable(host: str, port: int, timeout: float = 0.35) -> bool:
         return False
 
 
+def _run_db_token(ctx: dict) -> str:
+    """Return a per-run token used to name this run's PostgreSQL database.
+
+    Two suites that create the same ``test_<name>`` database on one server
+    destroy each other; the product's LockedDiscoverRunner covers Django runs
+    but pytest-django creates its database outside that runner. Giving every
+    harness invocation its own base database name makes the test database
+    unique by construction, so the two mechanisms can never meet.
+    """
+    env = ctx.get("env") if isinstance(ctx.get("env"), dict) else {}
+    token = str(env.get("FACTORY_TEST_DB_TOKEN") or "").strip()
+    if token and re.fullmatch(r"[A-Za-z0-9_]{1,32}", token):
+        return token
+    return "t" + secrets.token_hex(6)
+
+
+def _lane_name(ctx: dict) -> str:
+    task_id = str(ctx.get("task_id") or "")
+    if not task_id:
+        return ""
+    try:
+        return str(load_task(task_id).get("lane") or "")
+    except FactoryError:
+        return ""
+
+
+def _preferred_postgres_port(ctx: dict) -> int:
+    """Assign a lane to its own server so lanes never share one Postgres."""
+    env = ctx.get("env") if isinstance(ctx.get("env"), dict) else {}
+    forced = env.get("FACTORY_POSTGRES_PORT")
+    if forced:
+        try:
+            return int(forced)
+        except (TypeError, ValueError):
+            pass
+    lane = _lane_name(ctx)
+    if lane == "lane/a":
+        return 5432
+    if lane == "lane/b":
+        return 5433
+    seed = f"{ctx.get('task_id') or ''}:{ctx.get('head') or ''}".encode("utf-8")
+    return 5432 if int(hashlib.sha256(seed).hexdigest(), 16) % 2 == 0 else 5433
+
+
+def _unique_test_database_url(url: str, ctx: dict) -> str:
+    parts = urlsplit(url)
+    name = f"factory_{_run_db_token(ctx)}"
+    return urlunsplit((parts.scheme, parts.netloc, "/" + name, parts.query, parts.fragment))
+
+
+def _postgres_pool(ctx: dict) -> tuple[int, float]:
+    policy, _error = read_json(policy_path(ctx, "concurrency.json"))
+    section = policy.get("postgres") if isinstance(policy, dict) else None
+    database = section.get("test_database") if isinstance(section, dict) else None
+    if not isinstance(database, dict):
+        return 1, 1800.0
+    try:
+        slots = int(database.get("slots_per_server", 1))
+    except (TypeError, ValueError):
+        slots = 1
+    try:
+        wait = float(database.get("wait_s", 1800))
+    except (TypeError, ValueError):
+        wait = 1800.0
+    return max(1, slots), max(1.0, wait)
+
+
+@contextlib.contextmanager
+def _postgres_lease(ctx: dict, port: int):
+    """Serialize runs per PostgreSQL server, waiting rather than colliding."""
+    if not port:
+        yield
+        return
+    slots, wait = _postgres_pool(ctx)
+    with resource_lease(f"postgres-{port}", slots=slots, wait=wait):
+        yield
+
+
 def _postgres_target(ctx: dict) -> tuple[str | None, str | None, int | None]:
+    """Return (per-run URL, host, port) for a reachable loopback test server.
+
+    The URL names a run-unique base database. Django (and pytest-django)
+    derive ``test_<name>`` from it, so concurrent harness invocations never
+    share a test database even when they land on the same server. The base
+    database is never created: both runners connect to the maintenance
+    database to create and drop the test database.
+    """
     env = ctx.get("env") if isinstance(ctx.get("env"), dict) else {}
     configured = env.get("FACTORY_POSTGRES_URL")
+    configured_port: int | None = None
     if configured and re.match(r"^(?:postgres|postgresql)://", str(configured), re.I):
         match = re.search(r"@([^:/?#]+)(?::(\d+))?", str(configured))
         host = match.group(1) if match else "127.0.0.1"
-        port = int(match.group(2) or 5432) if match else 5432
+        configured_port = int(match.group(2) or 5432) if match else 5432
         # Never let a gate run test fixtures against an arbitrary production or
         # developer database URL. Only the loopback test services are eligible.
-        if host.lower() in {"localhost", "127.0.0.1", "::1"} and _service_reachable(host, port):
-            return str(configured), host, port
-    for port in (5432, 5433):
-        if _service_reachable("127.0.0.1", port):
+        if host.lower() not in {"localhost", "127.0.0.1", "::1"}:
+            configured = None
+        elif not _service_reachable(host, configured_port):
+            configured = None
+    candidates: list[int] = []
+    for port in ([configured_port] if configured_port else []) + [
+        _preferred_postgres_port(ctx), 5432, 5433,
+    ]:
+        if port not in candidates:
+            candidates.append(port)
+    for port in candidates:
+        if not _service_reachable("127.0.0.1", port):
+            continue
+        if configured and port == configured_port:
+            base = str(configured)
+        else:
             password = "pg2a_local_test_only" if port == 5432 else "pg2b_local_test_only"
-            url = f"postgresql://perfume:{password}@127.0.0.1:{port}/perfume_store"
-            return url, "127.0.0.1", port
+            base = f"postgresql://perfume:{password}@127.0.0.1:{port}/perfume_store"
+        return _unique_test_database_url(base, ctx), "127.0.0.1", port
     return None, None, None
+
 
 
 def _database_env(
@@ -366,7 +472,9 @@ def check_suite(ctx: dict) -> dict:
             command = [python, str(sandbox_manage), "test", "--noinput"]
             commands.append(command)
             env = _suite_env(cwd, ctx, engine, pg_url, policy)
-            proc = run_process(command, ctx=ctx, cwd=cwd, timeout=timeout, env=env)
+            lease = _postgres_lease(ctx, pg_port) if engine == "postgres" else contextlib.nullcontext()
+            with lease:
+                proc = run_process(command, ctx=ctx, cwd=cwd, timeout=timeout, env=env)
             log = (proc["stdout"] or "") + (proc["stderr"] or "")
             parsed = _parse_django_suite(log)
             run = {
@@ -490,7 +598,8 @@ def check_suite_pytest(ctx: dict) -> dict:
                 sandbox, ctx, "postgres", pg_url, debug=True,
                 sqlite_url=DEFAULT_SQLITE_TEST_URL,
             )
-            pg_proc = run_process(pg_command, ctx=ctx, cwd=pg_cwd, timeout=timeout, env=pg_env)
+            with _postgres_lease(ctx, pg_port):
+                pg_proc = run_process(pg_command, ctx=ctx, cwd=pg_cwd, timeout=timeout, env=pg_env)
             outputs["postgres"] = (pg_proc["stdout"] or "") + (pg_proc["stderr"] or "")
             runs.append({"engine": "postgres", "exit": pg_proc["exit"], "timed_out": pg_proc["timed_out"]})
             if pg_proc["error"]:
@@ -1292,7 +1401,7 @@ def check_thread_race(ctx: dict) -> dict:
     timeout = int(env.get("FACTORY_TEST_TIMEOUT", 1800))
     total = repetitions
     outcomes = []
-    with tempfile.TemporaryDirectory(prefix="factory-race-sandbox-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="factory-race-sandbox-") as tmp, _postgres_lease(ctx, port):
         for index in range(total):
             sandbox = Path(tmp) / f"repo-{index}"
             ok, copy_error = _sandbox_copy(root, sandbox)
@@ -1302,7 +1411,10 @@ def check_thread_race(ctx: dict) -> dict:
                     tool_name="pytest", version=version, exit_code=1,
                     stdout=copy_error, detail=copy_error, network="host-required",
                 )
-            extra = _test_env(sandbox, ctx, "postgres", postgres_url)
+            extra = _test_env(
+                sandbox, ctx, "postgres", postgres_url, debug=True,
+                sqlite_url=DEFAULT_SQLITE_TEST_URL,
+            )
             extra["FACTORY_RACE_RUN_ID"] = str(index)
             proc = run_process(command, ctx=ctx, cwd=sandbox, timeout=timeout, env=extra)
             outcomes.append({

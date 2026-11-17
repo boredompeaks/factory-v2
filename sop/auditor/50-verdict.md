@@ -7,6 +7,8 @@ Turn admitted evidence into one verdict the orchestrator can route on, using the
 ## Inputs
 All check/outcome/evidence refs from this run; prior clearances; the task context; `policies/schemas/auditor-verdict.json`; `policies/severity.json`; `policies/schemas/fault-codes.json`.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:auditor`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. **Delta continuity.** A repair delta may continue in this auditor context and is judged by the same V0–V3 rule; `15-delta.md` governs the patch, exploit recheck, and variants. P2/P3 is the intended reuse; a P1 repair keeps the session but gets a new builder window. Context reuse never reuses a task context across a head or tier change: mint a delta task context at the new head/tree with `parent_task_id`. A new task, a new head outside an audited repair, or a raised tier gets a fresh auditor task context and session.
 2. Clear prior findings: run every earlier admitted reproducer on head; `prior_findings_cleared` is true only when none reproduces.
@@ -17,7 +19,7 @@ All check/outcome/evidence refs from this run; prior clearances; the task contex
 7. Append the same object via `factory evidence`, findings via finding, attacks via attack-log; never write quality/** directly.
 
 ## Handoff
-Return the single JSON object to the orchestrator. Do not restate or reshape the schema here: the contract is `policies/schemas/auditor-verdict.json`. No peer messaging; the hacker's results return to this auditor only.
+Return the single JSON object to the orchestrator. Do not restate or reshape the schema here: the contract is `policies/schemas/auditor-verdict.json`. No peer messaging; in `BUG_FINDING` the one campaign result returns to this auditor only.
 
 ## Policy refs
 `policies/schemas/auditor-verdict.json`, `policies/severity.json`, `policies/schemas/fault-codes.json`, `policies/tiers.json`, `policies/negative-controls.json`.

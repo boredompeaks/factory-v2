@@ -7,6 +7,8 @@ Return one schema-valid handoff the orchestrator can route on, with every claim 
 ## Inputs
 Written paths; evidence refs; `task context`; gaps/BLOCKED paths; live end-state `git status`.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:crouton-alpha`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Re-read `git status` at the end; if head/tree moved from the task context, REFUSED STATE_MOVED.
 2. Assemble the output object exactly per `task context`; no prose fields.

@@ -62,7 +62,7 @@ audited path). The default `CMD` is `sleep infinity`; probes run through
 the typed `k1.exec` tool.
 
 Postgres runs with `-c fsync=off -c synchronous_commit=off -c
-full_page_writes=off -c shared_buffers=32MB -c max_connections=40` in both
+full_page_writes=off -c shared_buffers=32MB -c max_connections=100` in both
 `compose.yaml` and the typed `k1.up` handler, because PGDATA is disposable tmpfs.
 See `files/runbooks/k1.md`.
 

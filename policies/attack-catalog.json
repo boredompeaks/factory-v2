@@ -17,7 +17,42 @@
     "probe_definition": "One probe is one distinct execution of a probe against the runtime. Vary the endpoint, the tenant pair, or the engine to make a new probe; re-running the same execution does not add to the count.",
     "coverage_rule": "Each item requires at least one execution in every listed probe_class, and the item's total executions must reach min_probes for the hacker variant. REFUTED is only valid when both hold.",
     "skip_rule_none_tier": "When policies/tiers.json[tier].hacker_variant is 'none', there are no execution profiles: skip the hacker relay and the catalog entirely. No probes are run or counted.",
-    "schema_followup": "Per-probe execution records are persisted by factory probe as probe-record/1 proof records under evidence/probe/ (one record per distinct execution; schema at policies/schemas/probe-record.json). The auditor validates the returned probes against this catalog (>=1 per probe_class, total >= min_probes, only blocked counts) and cites the proof proof_root in the verdict evidence_ref."
+    "schema_followup": "Per-probe execution records are persisted by factory probe as probe-record/1 proof records under evidence/probe/ (one record per distinct execution; schema at policies/schemas/probe-record.json). The auditor validates the returned probes against this catalog (>=1 per probe_class, total >= min_probes). A counted execution is blocked or reproduced; a reproduced outcome is a finding, not a refutation. REFUTED requires at least one blocked probe in every listed probe_class and total blocked >= min_probes. An error, an ineligible engine, or an off-catalog class never counts. The audit cites the proof proof_root in the verdict evidence_ref."
+  },
+  "engine_policy": {
+    "concurrent_writer_classes": [
+      "double_spend",
+      "stock_oversell",
+      "concurrent_cancel",
+      "watermark_regression"
+    ],
+    "required_engine_by_class": {
+      "double_spend": "postgres",
+      "stock_oversell": "postgres",
+      "concurrent_cancel": "postgres",
+      "watermark_regression": "postgres"
+    },
+    "sqlite": "Single-writer only. A probe that opens more than one concurrent writer on SQLite fails with OperationalError/database-is-locked; that is an ENGINE_FAULT, never an application gate and never coverage.",
+    "error_rule": "An outcome of `error` never counts toward min_probes or REFUTED, on any engine.",
+    "counting_rule": "A counted probe is a distinct (item_id, probe_class, endpoint, tenant_pair, engine) execution with outcome blocked|reproduced, whose probe_class is declared by the item and whose engine is eligible for that class. Reruns are not new probes. An error outcome, an ineligible engine, or a class the item does not declare never counts.",
+    "retry_rule": "When a class is engine-ineligible on the runtime, run it on the required engine in the same campaign; do not spend the remaining budget on the ineligible engine."
+  },
+  "campaign": {
+    "unit": "release_train",
+    "children_per_train": 1,
+    "parent": "release-engineer",
+    "sweep_parent": "auditor",
+    "scope": "whole_train",
+    "boundary_ref": "policies/phases.json#/release_train",
+    "statement": "One hacker campaign per release train, at the BUILD->GATE section boundary. The release-engineer runs once per boundary, not once per task, and spawns exactly one hacker campaign that attacks every task in the train together to find seams between changes. The only other edge is auditor -> hacker in BUG_FINDING. Never one campaign per task, per flow, or per batch.",
+    "invocations_per_train": 1,
+    "cost_control": {
+      "invocations_per_train": 1,
+      "children_per_invocation": 1,
+      "retries": 0,
+      "budget_ref": "policies/attack-catalog.json#/variant_profiles",
+      "statement": "One campaign invocation per release train bounds cost. It stops at its variant profile budget and records NOT_RUN; there is no second pass, no per-task campaign, and no per-batch child."
+    }
   },
   "items": {
     "AUTHZ-ROUTE": {
@@ -40,6 +75,24 @@
         "method_override",
         "cross_tenant"
       ],
+      "engine_eligibility": {
+        "unauthenticated": [
+          "sqlite",
+          "postgres"
+        ],
+        "wrong_role": [
+          "sqlite",
+          "postgres"
+        ],
+        "method_override": [
+          "sqlite",
+          "postgres"
+        ],
+        "cross_tenant": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -76,6 +129,24 @@
         "deleted_object",
         "foreign_tenant"
       ],
+      "engine_eligibility": {
+        "id_enumeration": [
+          "sqlite",
+          "postgres"
+        ],
+        "id_swap": [
+          "sqlite",
+          "postgres"
+        ],
+        "deleted_object": [
+          "sqlite",
+          "postgres"
+        ],
+        "foreign_tenant": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -111,6 +182,20 @@
         "tenant_path_swap",
         "shared_cache_key"
       ],
+      "engine_eligibility": {
+        "tenant_header_swap": [
+          "sqlite",
+          "postgres"
+        ],
+        "tenant_path_swap": [
+          "sqlite",
+          "postgres"
+        ],
+        "shared_cache_key": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -148,6 +233,20 @@
         "concurrent_cancel",
         "watermark_regression"
       ],
+      "engine_eligibility": {
+        "double_spend": [
+          "postgres"
+        ],
+        "stock_oversell": [
+          "postgres"
+        ],
+        "concurrent_cancel": [
+          "postgres"
+        ],
+        "watermark_regression": [
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 5,
         "max": 10
@@ -184,6 +283,24 @@
         "double_refund",
         "currency_mismatch"
       ],
+      "engine_eligibility": {
+        "negative_amount": [
+          "sqlite",
+          "postgres"
+        ],
+        "over_refund": [
+          "sqlite",
+          "postgres"
+        ],
+        "double_refund": [
+          "sqlite",
+          "postgres"
+        ],
+        "currency_mismatch": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -220,6 +337,24 @@
         "otp_cross_user",
         "otp_bruteforce"
       ],
+      "engine_eligibility": {
+        "otp_replay": [
+          "sqlite",
+          "postgres"
+        ],
+        "otp_expiry": [
+          "sqlite",
+          "postgres"
+        ],
+        "otp_cross_user": [
+          "sqlite",
+          "postgres"
+        ],
+        "otp_bruteforce": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -278,6 +413,24 @@
         "recovery_code_reuse",
         "trusted_device_spoof"
       ],
+      "engine_eligibility": {
+        "step_skip": [
+          "sqlite",
+          "postgres"
+        ],
+        "challenge_reuse": [
+          "sqlite",
+          "postgres"
+        ],
+        "recovery_code_reuse": [
+          "sqlite",
+          "postgres"
+        ],
+        "trusted_device_spoof": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -312,6 +465,23 @@
         "doc_string",
         "fixture_data"
       ],
+      "engine_eligibility": {
+        "file_comment": [
+          "none"
+        ],
+        "test_name": [
+          "none"
+        ],
+        "commit_message": [
+          "none"
+        ],
+        "doc_string": [
+          "none"
+        ],
+        "fixture_data": [
+          "none"
+        ]
+      },
       "min_probes": {
         "high": 3,
         "max": 6
@@ -349,6 +519,24 @@
         "coupon_stacking",
         "currency_swap"
       ],
+      "engine_eligibility": {
+        "client_price_override": [
+          "sqlite",
+          "postgres"
+        ],
+        "negative_quantity": [
+          "sqlite",
+          "postgres"
+        ],
+        "coupon_stacking": [
+          "sqlite",
+          "postgres"
+        ],
+        "currency_swap": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -385,6 +573,24 @@
         "missing_key",
         "key_collision"
       ],
+      "engine_eligibility": {
+        "webhook_replay": [
+          "sqlite",
+          "postgres"
+        ],
+        "duplicate_key": [
+          "sqlite",
+          "postgres"
+        ],
+        "missing_key": [
+          "sqlite",
+          "postgres"
+        ],
+        "key_collision": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 4,
         "max": 8
@@ -430,6 +636,24 @@
         "balance_field",
         "tenant_field"
       ],
+      "engine_eligibility": {
+        "role_field": [
+          "sqlite",
+          "postgres"
+        ],
+        "owner_field": [
+          "sqlite",
+          "postgres"
+        ],
+        "balance_field": [
+          "sqlite",
+          "postgres"
+        ],
+        "tenant_field": [
+          "sqlite",
+          "postgres"
+        ]
+      },
       "min_probes": {
         "high": 3,
         "max": 6
@@ -465,6 +689,20 @@
         "source_map",
         "error_payload"
       ],
+      "engine_eligibility": {
+        "response_header": [
+          "none"
+        ],
+        "debug_page": [
+          "none"
+        ],
+        "source_map": [
+          "none"
+        ],
+        "error_payload": [
+          "none"
+        ]
+      },
       "min_probes": {
         "high": 3,
         "max": 6

@@ -23,7 +23,7 @@ This is an index, not the procedure. Load it, then read only the SOP file the cu
 | `evidence.hash` | Content-hash evidence files at a validated rev. |
 | `docker.ensure` | Ensure the container engine is running; never pulls or builds. |
 | `scratch.write` / `scratch.rm` | Write or remove builder scratch artifacts. |
-| `basemind_*` (`code`, `graph`, `web`) | Read-only code search, architecture, external docs. |
+| `basemind_*` (`code`, `graph`, `web`) + `basemind_memory` | Read-only code search, architecture, external docs; `basemind_memory` reads and writes shared institutional memory. |
 
 ## SOP index
 

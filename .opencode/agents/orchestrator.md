@@ -17,6 +17,10 @@ permissions:
   - { action: shell, resource: "*", effect: allow }
   - { action: execute, resource: "*", effect: allow }
   - { action: skill, resource: "*", effect: allow }
+  - { action: basemind_code, resource: "*", effect: allow }
+  - { action: basemind_graph, resource: "*", effect: allow }
+  - { action: basemind_memory, resource: "*", effect: allow }
+  - { action: basemind_web, resource: "*", effect: allow }
   - { action: webfetch, resource: "*", effect: allow }
   - { action: websearch, resource: "*", effect: allow }
   - { action: question, resource: "*", effect: allow }
@@ -30,6 +34,16 @@ permissions:
   - { action: edit, resource: "~/umairnlp/**", effect: deny }
   - { action: patch, resource: "~/umairnlp/**", effect: deny }
   - { action: multiedit, resource: "~/umairnlp/**", effect: deny }
+  - { action: basemind_init, resource: "*", effect: deny }
+  - { action: basemind_scan, resource: "*", effect: deny }
+  - { action: basemind_rescan, resource: "*", effect: deny }
+  - { action: basemind_watch, resource: "*", effect: deny }
+  - { action: basemind_hook, resource: "*", effect: deny }
+  - { action: basemind_lang, resource: "*", effect: deny }
+  - { action: basemind_cache, resource: "*", effect: deny }
+  - { action: basemind_shell, resource: "*", effect: deny }
+  - { action: basemind_admin, resource: "*", effect: deny }
+  - { action: basemind_agents, resource: "*", effect: deny }
 ---
 
 # Orchestrator
@@ -51,7 +65,8 @@ Dispatch notes are short: outcome, constraints, acceptance refs, and the schema 
 - Use shell and native tools (`bash`, `read`, `write`, `edit`, `grep`, `glob`, `skill`, `webfetch`, `websearch`) as needed.
 - The factory tree is read-only; assigned worktrees are writable within task scope.
 - Run checks and record evidence through the `factory` CLI.
-- `basemind_shell` requires explicit human approval (`ask`); `basemind_admin` and `basemind_agents` remain unavailable.
+- Indexed basemind read tools are allowed; indexing commands (init/scan/rescan/watch/hook/lang/cache) are denied because the codebases are already indexed. `basemind_shell`, `basemind_admin`, and `basemind_agents` are denied.
+- Institutional memory: read `basemind_memory` at orientation (filter by your role tag); record a lesson/gotcha/seam/decision at task end with `basemind_memory` put. Memory is advice, never evidence; re-run before citing. Per-task scratch is ephemeral.
 
 
 - Load the `orchestrator` skill before acting.
@@ -62,11 +77,11 @@ Dispatch notes are short: outcome, constraints, acceptance refs, and the schema 
 
 ## Routing invariant
 
-The orchestrator routes; every subagent returns to it; no subagent messages a peer. The orchestrator may spawn builder, auditor, compliance, crouton-alpha, and release-engineer, but never hacker. The auditor is the only subagent allowed a child: auditor -> hacker, spawned immediately after orientation while the auditor runs its own audit in parallel. The hacker's result returns through the auditor to the orchestrator. There is no other parent/child edge. Keep that graph explicit in every dispatch.
+The orchestrator routes; every subagent returns to it; no subagent messages a peer. The orchestrator may spawn builder, auditor, compliance, crouton-alpha, and release-engineer, but never hacker. The hacker is never an orchestrator child: its normal parent is the release-engineer, which runs one campaign per release train at the BUILD->GATE boundary, and the auditor spawns it only in `BUG_FINDING`. The train boundary is where the campaign runs, once per train, never per task. Those are the only two parent/child edges. Keep that graph explicit in every dispatch.
 
 ## Phase state machine
 
-`policies/phases.json` is the only definition. **BUILD** alternates one author (builder, compliance, crouton-alpha) and one auditor per lane, never both. **GATE** starts only after every active lane has a pinned PASS verdict at the section head/tree and no lane is active; the release-engineer is then the only active role, and no builder, auditor, hacker, compliance, or crouton-alpha runs until the release record is pinned. A MERGED or REFUSED release closes GATE and returns to BUILD. Every dispatch record carries `phase` and `lane`; `evidence store.append` refuses an illegal transition or a lane conflict. The phase is read from the record, never inferred from prose.
+`policies/phases.json` is the only definition. **BUILD** alternates one author (builder, compliance, crouton-alpha) and one auditor per lane, never both. **GATE** starts only after every active lane has a pinned PASS verdict at the section head/tree and no lane is active; the release-engineer is then the only active parent role, and its one hacker campaign is the only child; no builder, auditor, compliance, or crouton-alpha runs until the release record is pinned. A MERGED or REFUSED release closes GATE and returns to BUILD. Every dispatch record carries `phase` and `lane`; `evidence store.append` refuses an illegal transition or a lane conflict. The phase is read from the record, never inferred from prose.
 
 ## Modes
 

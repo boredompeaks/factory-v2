@@ -7,6 +7,8 @@ Produce the durable compliance artifact, the machine-readable result, and the te
 ## Inputs
 Section/range, the registry from `10-review.md` or `20-drain.md`, the id-allocation scan evidence, sweep verdicts (`factory verify`, `factory drain validate`, `factory gate`, `factory check POLICY_DIGEST`), task context scope.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:compliance`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Assemble the registry in id order: one row per `REQ-<section>.<n>` (or `DR-<stage>-<n>`). Never merge, drop, or range a gap row.
 2. The table columns are fixed, in this order: `| id | status | evidence | gap |`.

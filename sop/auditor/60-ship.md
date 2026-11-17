@@ -7,6 +7,8 @@ On PASS, make the audited branch durable by pushing that branch once, so the rel
 ## Inputs
 Task context (branch, head, tier); the completed audited verdict; `policies/worktree-map.json`; live `git status`.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:auditor`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Confirm the verdict object is complete and ; push only after it exists.
 2. Resolve the audited branch → worktree strictly from `policies/worktree-map.json` (lane/a, lane/b, spec-comp). feat/add-frontend is never pushed here.

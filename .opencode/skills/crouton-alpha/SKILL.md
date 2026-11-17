@@ -18,7 +18,7 @@ This is an index, not the procedure. Load it, then read only the SOP file the cu
 | `write` / `edit` | Native file write/edit, limited by authz intercepts to `backend/docs/**` ∩ `capability.scope`. |
 | `git.state` | Read the current ref and branch before and after a docs change. |
 | `scratch.write` / `scratch.rm` | Write or remove crouton-alpha scratch artifacts. |
-| `basemind_*` (`code`, `graph`, `web`) | Read-only code search, architecture, external docs. |
+| `basemind_*` (`code`, `graph`, `web`) + `basemind_memory` | Read-only code search, architecture, external docs; `basemind_memory` reads and writes shared institutional memory. |
 
 ## SOP index
 

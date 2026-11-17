@@ -5,16 +5,30 @@
   "k1_per_lane": 1,
   "k1_note": "Host-wide K1 run slots and per-lane slots. Enforced atomically by factory k1 before factory k1 up starts containers; a refusal is K1_SLOT_BUSY. See files/runbooks/k1.md and files/policies/dispatch-rules.json.",
   "postgres": {
-    "max_connections": 40,
-    "note": "Single server-side cap for all three PostgreSQL containers: pg2a and pg2b pass -c max_connections in files/docker/services/compose.yaml, and both the k1 compose service and the factory k1 up docker argv read this value. scripts/test_policy_contracts.py enforces the match. The app pool below is separate."
+    "max_connections": 100,
+    "note": "Single server-side cap for all three PostgreSQL containers. pg2a, pg2b and the K1 pg service all pass -c max_connections in their compose files; this value is the single declared cap. The app pool below is separate. The host pg services also carry a bounded work_mem so 100 connections cannot exhaust the 1 GB limit.",
+    "test_database": {
+      "mode": "per_run_unique",
+      "prefix": "factory_",
+      "lane_servers": {
+        "lane/a": 5432,
+        "lane/b": 5433
+      },
+      "slots_per_server": 1,
+      "wait_s": 1800,
+      "note": "Every harness invocation names its own base database (factory_<token>), so Django and pytest-django derive distinct test_<name> databases and cannot create/drop each other's. A lane maps to its own server. DB-backed checks take one OS file-lock slot per server before starting, and wait for it instead of colliding; the lock dies with the process. PostgreSQL data is tmpfs, so a restarted server also discards any orphaned test database."
+    }
   },
   "app": {
     "pool_size_per_service": 10,
-    "note": "Documented application pool per Postgres service instance. At most three pools on this host (K1 app, pg2a, pg2b) use 30 of the 40 server connections; the remainder covers Postgres reserved/admin slots. See files/runbooks/k1.md and files/runbooks/services.md."
+    "note": "Documented application pool per Postgres service instance. At most three pools on this host (K1 app, pg2a, pg2b) use 30 of the 100 server connections; the remainder covers suite workers, concurrent-writer probes and reserved/admin slots. See files/runbooks/k1.md and files/runbooks/services.md."
   },
   "probe": {
     "concurrency_cap": 4,
+    "k1_concurrency_cap": 16,
+    "sqlite_concurrency_cap": 1,
+    "host_postgres_concurrency_cap": 8,
     "max_attempts_per_call": 10,
-    "note": "At most four hacker probes in flight per host. Enforced by the factory probe loop in factory probe; see files/runbooks/test-runner.md."
+    "note": "A probe is bounded by its runtime, not by one host number. SQLite is single-writer (cap 1): a concurrent-writer probe on it is an ENGINE_FAULT, not coverage. A K1 run has its own PostgreSQL and network, so it may use the catalog depth (up to 16 concurrent writers). A host PostgreSQL probe is capped at 8 so two lanes plus an ad-hoc run cannot exhaust one 100-connection server. The catalog's depth is the upper bound; this file never raises it."
   }
 }

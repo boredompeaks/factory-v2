@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "The factory has exactly two phases. BUILD alternates one author and one auditor per lane until the release-train criteria hold. GATE is release-engineer-exclusive: no builder, auditor, hacker, compliance, or crouton-alpha dispatch runs while the release-engineer owns the section. A refused release returns to BUILD for the bounded repair; a merged release returns to BUILD for the next section. This file is the only definition of the phase rules; personas, SOPs, and schemas cite it and do not restate the values.",
+  "description": "The factory has exactly two phases. BUILD alternates one author and one auditor per lane until the release-train criteria hold. GATE is release-engineer-exclusive: no builder, auditor, compliance, or crouton-alpha dispatch runs while the release-engineer owns the section. The release-engineer may spawn exactly one hacker campaign for the whole train; that is the only hacker edge in GATE. A refused release returns to BUILD for the bounded repair; a merged release returns to BUILD for the next section. This file is the only definition of the phase rules; personas, SOPs, and schemas cite it and do not restate the values.",
   "policy_ref": "files/policies/phases.json",
   "lane_source": "files/policies/worktree-map.json",
   "permanent_lanes": [
@@ -44,19 +44,19 @@
       ]
     },
     "GATE": {
-      "purpose": "Release the audited section; the release-engineer is the only active role.",
+      "purpose": "Release the audited section; the release-engineer is the only active role, with exactly one hacker campaign as its child.",
       "allowed_targets": [
         "release-engineer"
       ],
       "forbidden_targets": [
         "builder",
         "auditor",
-        "hacker",
         "compliance",
         "crouton-alpha"
       ],
+      "hacker_campaign_rule": "The active release-engineer may spawn exactly one hacker campaign covering the whole release train. No orchestrator->hacker dispatch exists, and no second hacker campaign may be recorded during the gate.",
       "lane_rule": "The release-engineer dispatch is lane-less (spec-comp is the integration target and is resolved by worktree-map.json). No lane worktree is dispatched or written.",
-      "exclusivity_rule": "Exactly one release-engineer invocation is active. No author, auditor, hacker, compliance, or crouton-alpha dispatch may be recorded until the release result is recorded.",
+      "exclusivity_rule": "Exactly one release-engineer invocation is active. Its only child is the single train campaign (hacker). No author, auditor, compliance, or crouton-alpha dispatch, and no second hacker dispatch, may be recorded until the release result is recorded.",
       "exit_rule": "A proof-recorded release record with phase MERGED ends the gate and returns the factory to BUILD for the next section. A proof-recorded release record with result_type REFUSED, or an orchestrator CYCLES_EXHAUSTED/RELEASE_REFUSED decision, returns to BUILD for the bounded repair loop."
     }
   },
@@ -99,7 +99,7 @@
     "A phase record is append-only. A transition writes one new record; it never edits the prior phase record.",
     "A HALT ends the turn and freezes the phase until a human-authored capability resumes it.",
     "The orchestrator holds routing authority only; the phase does not grant it code, verdict, or merge authority.",
-    "The release-engineer may not dispatch any role and has no child. The auditor is the only role with a child, and only in BUILD."
+    "The release-engineer's only child is one hacker campaign per release train at GATE; it may not dispatch any other role. The auditor's only child is one hacker campaign in BUG_FINDING. The orchestrator never dispatches the hacker, and no other parent/child edge exists."
   ],
   "release_train": {
     "trigger": "first",

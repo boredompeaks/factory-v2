@@ -7,6 +7,8 @@ Compare one spec section against real code, producing a complete requirement reg
 ## Inputs
 Orchestrator handoff: section number, exact spec line range, target area, conventions, deferred rows. Task scope. `backend/docs/conventions.md`. Prior section reports under `backend/docs/compliance/` and the `quality-scan/` corpus — the id scan in step 2 reads these.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:compliance`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Load the `compliance` skill; validate the task context/envelope. The review is read-only and has no command execution.
 2. **Scan before allocating ids.** Grep for `REQ-` and for the bracket product form `[R-` over the product docs (`backend/docs/`, including `backend/docs/compliance/`) and the quality-scan corpus (`quality-scan/reports/`, `quality-scan/*.md`). Record roots, patterns, hit count, the highest existing `REQ-<section>.<n>`, and the first id allocated. The next id is one past that maximum; a retired id is never reused. The scan evidence is required in the report (`30-docs.md`), not optional.

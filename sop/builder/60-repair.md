@@ -5,6 +5,8 @@
 - Finding refs, repro refs, and the affected check ids from the orchestrator.
 - The current head/tree and the previous builder result.
 - `policies/severity.json`, `policies/checks.json`, `policies/tiers.json`, `policies/task-limits.json`, `policies/mutation.json`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:builder`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. Read the finding refs and repro refs. Do not act on prose summaries, a verdict narrative, or another role's message; only refs are inputs.
 2. Reproduce each finding at the current head with `factory repro` against the harness evidence copy. A finding that does not reproduce is reported back as not reproduced with the exact command and result; do not "fix" it by guesswork.

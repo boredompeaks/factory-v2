@@ -5,6 +5,8 @@
 - The user's handoff ("noted") and the session checkpoint.
 - Task ids, task contexts, last verdicts, and claimed progress.
 - `git status`, `git diff`, `git log`, and `git worktree list` for each named worktree.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:orchestrator`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. **Freeze.** Acknowledge the handoff and stop new writes or dispatches until the inventory is complete. "Noted" means "I have read the handoff", not approval to discard work.
 2. **Enumerate task ids.** Build a table from the checkpoint and refs: task id, kind, owner, lane, expected head/tree, scope, status (`done`, `in-flight`, `queued`, `blocked`). Include ids with no matching ref as `unknown`. If no task id is recoverable, search the branch, diff, and last dispatch; do not invent one.

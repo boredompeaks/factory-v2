@@ -624,6 +624,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json(card)
     card.set_defaults(handler=_policy_card)
 
+    probe_parser = commands.add_parser("probe", help="audit hacker campaign probe coverage")
+    probe_sub = probe_parser.add_subparsers(dest="probe_action", required=True)
+    audit = probe_sub.add_parser("audit", help="count eligible probe executions against the catalog")
+    audit.add_argument("--records", action="append", default=[], help="probe-record file or directory (repeatable)")
+    audit.add_argument("--variant", choices=("high", "max"), default="max")
+    audit.add_argument("--item", action="append", default=[], help="catalog item id (repeatable)")
+    _add_json(audit)
+    audit.set_defaults(handler=_probe_audit)
+
     return parser
 
 
@@ -641,6 +650,38 @@ def _release(args: argparse.Namespace) -> dict[str, Any]:
 def _normalize_task_arg(args: argparse.Namespace) -> None:
     if hasattr(args, "task_id_option"):
         args.task_id = args.task_id_option or getattr(args, "task_id", None)
+
+
+def _probe_audit(args: argparse.Namespace) -> dict[str, Any]:
+    script = REPO_ROOT / "tools" / "probe_audit.py"
+    if not script.is_file():
+        raise FactoryError(f"probe audit tool is missing: {script}")
+    records = args.records or ["evidence/probe"]
+    command = [
+        sys.executable, str(script),
+        "--records", *[str(item) for item in records],
+        "--variant", args.variant,
+    ]
+    for item in args.item:
+        command.extend(["--item", item])
+    command.append("--json")
+    result = run(command, cwd=REPO_ROOT)
+    report: Any = None
+    if result.stdout.strip():
+        try:
+            report = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            report = None
+    status = "PASS" if result.returncode == 0 else ("FAIL" if result.returncode == 1 else "TOOL_ABSENT")
+    return {
+        "result": status,
+        "exit": result.returncode,
+        "records": [str(item) for item in records],
+        "variant": args.variant,
+        "report": report,
+        "stdout": result.stdout if report is None else "",
+        "stderr": result.stderr,
+    }
 
 
 def _exit_code(result: dict[str, Any]) -> int:

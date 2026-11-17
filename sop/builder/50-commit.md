@@ -5,6 +5,8 @@
 - Green precheck from `40-precheck.md`.
 - The changed file list, acceptance hashes, added-test table, and changelog ref.
 - `schemas/task.json`, `policies/schemas/builder-result.json`, `policies/changelog.json`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:builder`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. Run `git status` in the assigned worktree. Confirm the only changes are the intended scoped paths and that no scratch, secret, generated, out-of-scope file, or modified read-only exploit/repro test is present.
 2. Run `git diff` at validated refs and read the staged change set. A path outside `task context` is a block; do not commit around it. Confirm each edited function or block carries the task id and that no comment narrates the diff.

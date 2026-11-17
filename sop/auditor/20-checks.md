@@ -8,6 +8,8 @@ Run the tier's check set with correct semantics and honest outcome states, so th
 
 task context (tier, head, tree, budget); `policies/tiers.json`; `policies/checks.json`; the tier's `check_conditions`; the check-runner registry; `policies/schemas/fault-codes.json`.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:auditor`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Select exactly `policies/tiers.json[tier].required_checks`; per-check definitions come from `policies/checks.json`. Sharding is allowed; the union of shard results is the result.
 2. Execute at task context via `factory check <CHECK>` or `factory gate` where the definition names it.
@@ -17,7 +19,7 @@ task context (tier, head, tree, budget); `policies/tiers.json`; `policies/checks
 6. Cache only on exact (tree, check_id, check_impl_sha, engine); cached results count with cached:true.
 7. Retry only transient faults listed in `policies/schemas/fault-codes.json`, up to `policies/tiers.json[tier].fault_retries`; exhausted → NOT_RUN.
 8. Record each outcome with evidence_ref/sha256; NOT_RUN requires the real fault evidence hash, never zeros.
-9. For a hacker catalog outcome, verify the per-probe records against `policies/attack-catalog.json`: every returned `probe-record/1` hash resolves in `evidence/probe/`, REFUTED has at least one blocked probe in every listed probe_class and at least `min_probes[variant]` distinct blocked probes, and a claimed NOT_APPLICABLE on an applicable item becomes NOT_RUN. A caller-supplied probes array without evidence store records is not evidence.
+9. For a hacker catalog outcome, verify the per-probe records against `policies/attack-catalog.json`: every returned `probe-record/1` hash resolves in `evidence/probe/`, REFUTED has at least one blocked probe in every listed probe_class and at least `min_probes[variant]` distinct blocked probes, and a claimed NOT_APPLICABLE on an applicable item becomes NOT_RUN. A caller-supplied probes array without evidence store records is not evidence. A concurrent-writer probe that hit a `sqlite` `OperationalError` is `ENGINE_FAULT`/`NOT_RUN` per `policies/attack-catalog.json#/engine_policy`, never coverage and never `REFUTED`.
 
 ## Handoff
 Return outcomes inside the auditor verdict to the orchestrator. Hacker outcomes return through this auditor; do not message peers.

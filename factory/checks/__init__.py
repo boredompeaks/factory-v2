@@ -6,14 +6,16 @@ diffs determine the result; callers cannot supply a claimed result.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterator, Iterable
 
 CHECK_RUNNER_VERSION = "1.0"
 FIXED_ENV = {
@@ -32,6 +34,84 @@ def sha256(data: bytes | str) -> str:
     if isinstance(data, str):
         data = data.encode("utf-8")
     return hashlib.sha256(data).hexdigest()
+
+
+def lock_root() -> Path:
+    """Directory for cross-process resource leases (never inside a worktree)."""
+    configured = (os.environ.get("FACTORY_LOCK_DIR") or "").strip()
+    root = Path(configured).expanduser() if configured else Path.home() / ".factory" / "locks"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _try_slot_lock(fd: int) -> bool:
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - non-POSIX hosts have no shared services
+        return True
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
+def _release_slot_lock(fd: int) -> None:
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover
+        return
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
+@contextlib.contextmanager
+def resource_lease(
+    name: str,
+    *,
+    slots: int = 1,
+    wait: float = 1800.0,
+) -> Iterator[str]:
+    """Take one cross-process slot from ``name``'s pool, or wait for one.
+
+    Shared test services are finite. Two suites on one PostgreSQL server or
+    one SQLite file do not merely run slowly: they corrupt each other. Every
+    DB-backed check therefore takes a slot before it starts a server-side run.
+    The lock is an OS advisory lock on a file under ``~/.factory/locks``; it is
+    released automatically when the process exits, so a killed run cannot
+    wedge the pool.
+
+    ``slots`` is the pool size. Waiting (rather than failing immediately) is
+    deliberate: a gate must serialize, not flake, when another task's check is
+    already using the service. A caller that waits past ``wait`` gets a named
+    RESOURCE_BUSY failure instead of a silent collision.
+    """
+    pool = max(1, int(slots))
+    deadline = time.monotonic() + max(0.0, float(wait))
+    safe_name = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in name)
+    while True:
+        for index in range(pool):
+            path = lock_root() / f"{safe_name}.slot{index}.lock"
+            fd = os.open(str(path), os.O_RDWR | os.O_CREAT, 0o600)
+            if not _try_slot_lock(fd):
+                os.close(fd)
+                continue
+            try:
+                os.ftruncate(fd, 0)
+                os.write(fd, f"{os.getpid()}\n".encode("ascii", "replace"))
+                yield str(path)
+            finally:
+                _release_slot_lock(fd)
+                os.close(fd)
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"RESOURCE_BUSY: no free {safe_name!r} slot after {wait:g}s "
+                f"(pool size {pool}, lock dir {lock_root()})"
+            )
+        time.sleep(0.25)
 
 
 def ctx_path(ctx: dict, key: str, fallback: str | Path | None = None) -> Path | None:

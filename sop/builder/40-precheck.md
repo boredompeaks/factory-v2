@@ -1,10 +1,12 @@
 # 40 — Precheck
 **Mode:** `BUILD`
-**Purpose** Run the tier's builder-side checks before handoff, excluding checks owned by the auditor or hacker, and return a truthful block when they do not pass.
+**Purpose** Run the tier's builder-side checks before handoff, excluding checks owned by the auditor or by the release-train campaign, and return a truthful block when they do not pass.
 **Inputs**
 - The committed or staged tree from `30-tests.md`.
 - `policies/tiers.json[tier]`.
 - `policies/checks.json`, `policies/check-runners.json`, `policies/gate.json`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:builder`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. Read `required_checks` for the task context tier. Do not take the list from memory or from the task text.
 2. Subtract the tier's `builder_precheck_exclude` entries. Those checks belong to the auditor or the runtime lane; builder neither runs nor reports them.

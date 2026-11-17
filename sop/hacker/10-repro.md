@@ -3,7 +3,9 @@
 ## Purpose
 Turn a suspected defect into a minimal, repeatable reproducer the auditor can re-run from the harness evidence copy. A claim that cannot be reproduced is not a finding.
 
-## Inputs envelope per `policies/schemas/hacker-envelope.json`: task context, attack_plan, closure_ref, authz_matrix_ref, drain_stage, nonce, proof_root. The catalog entry per item. K1 runtime provisioned by the auditor (this role has no factory k1 commands tools).
+## Inputs envelope per `policies/schemas/hacker-envelope.json`: task context, attack_plan, closure_ref, authz_matrix_ref, drain_stage, nonce, proof_root. The catalog entry per item. K1 runtime provisioned by the campaign parent (this role has no factory k1 command tools).
+
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:hacker`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
 
 ## Procedure
 1. Load `skills/hacker/SKILL.md`; validate R1: proof_root, variant, tree/ancestry, contamination. Any failure → REFUSED with the matching code; run no probe.
@@ -15,7 +17,7 @@ Turn a suspected defect into a minimal, repeatable reproducer the auditor can re
 7. Attach a repro-spec (`policies/schemas/repro-spec.json`) and an evidence ref/transcript. No ref → NOT_RUN.
 
 ## Handoff
-Return to the auditor only, one JSON object per `policies/schemas/hacker-result.json`. The auditor is the sole parent and the only subagent edge is auditor → hacker; results never go to the orchestrator or peers. No messaging, no spawning.
+Return to the campaign parent only, one JSON object per `policies/schemas/hacker-result.json`. The campaign parent is the release-engineer for the release-train campaign at GATE and the auditor in a `BUG_FINDING` sweep; results never go to the orchestrator or peers. No messaging, no spawning.
 
 ## Policy refs
 `policies/tiers.json`, `policies/attack-catalog.json`, `policies/schemas/hacker-envelope.json`, `policies/schemas/hacker-result.json`, `policies/schemas/repro-spec.json`, `policies/redaction.json`.

@@ -6,6 +6,8 @@
 - `policies/worktree-map.json`.
 - `schemas/task.json`, `policies/task-limits.json`.
 - `git status`, `git rev-parse`, `git log`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:builder`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. Load the `builder` skill. It is the task procedure; this SOP only fixes the entry conditions.
 2. Validate the read-only `task.json` against its schema and confirm the head, branch, and scope before writing.

@@ -5,6 +5,8 @@
 - Spec section/range and requirement ids.
 - Prior compliance report, if any.
 - `policies/dispatch-rules.json`, `policies/task-kinds.json`, `policies/task-limits.json`, `policies/tiers.json`, `policies/checks.json`, `policies/risk-map.json`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:orchestrator`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. **Compliance before build.** Dispatch `compliance` read-only with the spec range. It writes only `backend/docs/compliance/S<n>.md` and returns the full requirement table. `policies/dispatch-rules.json` pre-dispatches compliance only for spec, requirements, compliance-review, and drain scopes (`DR-SPEC-01`, `DR-DRAIN-01`); security, money, infra, and ordinary build tasks do not pre-dispatch it. A FAIL is a halt, not a builder task.
 2. **Validate the report.** Every requirement id appears once; each verdict is `IMPLEMENTED`, `PARTIAL`, `MISSING`, `DEVIATES`, `NOT-APPLICABLE`, or `DEFERRED->S<x>`; each has file:line evidence or a named gap. A pruned or id-incomplete table is `CTRL_FAILED`; re-dispatch the same compliance task rather than filling gaps from memory.

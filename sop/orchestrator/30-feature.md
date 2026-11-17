@@ -6,6 +6,8 @@
 - Acceptance refs and the acceptance author family.
 - Scope globs, affected lanes, dependencies.
 - `policies/task-kinds.json` (`FEATURE`), `policies/task-limits.json`, `policies/tiers.json`, `policies/checks.json`, `policies/risk-map.json`, `policies/dispatch-rules.json`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:orchestrator`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. **Acceptance first.** Require at least one acceptance ref that fails on the current head. No ref -> `HALT NO_ACCEPTANCE_REF`; do not let a builder author proof of its own feature.
 2. **Decompose.** Split the feature into tasks that respect `policies/task-limits.json[FEATURE]`. One task context per task, one lane per builder, one scope glob set per task. A task that exceeds the limit is split before dispatch; a builder that receives one returns `BLOCKED SPLIT_REQUIRED`.

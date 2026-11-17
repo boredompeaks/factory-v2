@@ -16,6 +16,8 @@ A change has good taste only when all five hold; each failure is a finding, not 
 4. **No hidden I/O.** Pure logic does not read the network, disk, environment, clock, or random source implicitly. I/O sits at an explicit boundary and is injectable.
 5. **The guard is load-bearing.** A named test fails when the guard is removed. A guard that no test can distinguish from its absence is not proven. A comment that narrates what the code already says is a smell; a comment that records a non-obvious why is not.
 
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:auditor`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 ## Procedure
 1. Run the tier's quality checks exactly: SMELL, CONVENTION, ARCH, ORACLE_PROVENANCE, GUARD_DELTA, MUTATION where required. Definitions and applicability live in `policies/checks.json`/`policies/tiers.json`.
 2. Apply the five good-taste properties above to every changed hunk. Record the property, file:line, and the finding class for each failure.
@@ -30,7 +32,7 @@ A change has good taste only when all five hold; each failure is a finding, not 
 11. Record residual P3/preexisting findings without changing the verdict.
 
 ## Handoff
-Return findings and outcomes in the auditor-verdict object to the orchestrator. No peer messaging; only the sanctioned hacker edge returns to this auditor.
+Return findings and outcomes in the auditor-verdict object to the orchestrator. No peer messaging; the only child result this role receives is one `BUG_FINDING` campaign, and a normal audit receives none.
 
 ## Policy refs
 `policies/tiers.json`, `policies/checks.json`, `policies/severity.json`, `policies/gate.json`, `policies/layers.json`, `policies/invariants.json`, `policies/mutation.json`, `policies/schemas/auditor-verdict.json`.

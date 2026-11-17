@@ -27,13 +27,24 @@ This is an index, not the procedure. Load it, then read only the SOP file the cu
 | `drain.validate` | Verify the drain permanent guard before merge. |
 | `ledger.append` | Record the release result. |
 | `scratch.write` / `scratch.rm` | Write or remove release scratch artifacts. |
-| `basemind_*` (`code`, `graph`, `web`) | Read-only code search, architecture, external docs. |
+| `basemind_*` (`code`, `git`, `graph`, `web`) + `basemind_memory` | Read-only code search, git history/blame/diff, architecture, external docs; `basemind_memory` reads prior decisions and records release lessons. Indexing commands are denied. |
+
+The hacker campaign is dispatched with the native `subagent` tool (`resource: hacker`, one call per release train). No typed tool is needed for it.
+
+## Release-gate steps
+
+1. `10-promote.md` — validate the envelope, lanes, and live state.
+2. `15-campaign.md` — one hacker campaign over the whole release train at the BUILD->GATE boundary; evidence only.
+3. `20-merge.md` — one watch at the pinned head, then merge.
+4. `30-ci.md` — interpret CI and the bounded red-check loop.
+5. `40-rollback.md` — halt, reverse, or report as unrecoverable.
 
 ## SOP index
 
 | SOP file | Read it when |
 | --- | --- |
 | `files/sop/release-engineer/10-promote.md` | Reconciling lanes, pushing the integration branch, and opening or reusing the PR. |
+| `files/sop/release-engineer/15-campaign.md` | At the BUILD->GATE boundary; running the one hacker campaign over the whole release train and folding its result into the release record. |
 | `files/sop/release-engineer/20-merge.md` | Watching required checks once and merging with the pinned head. |
 | `files/sop/release-engineer/30-ci.md` | Interpreting CI state and required-check failures. |
 | `files/sop/release-engineer/40-rollback.md` | A release must be halted, reversed, or reported as unrecoverable. |
@@ -61,6 +72,7 @@ Policies are authoritative. This skill only points at them.
 
 - **Carbon:** `carbon` is the MCP server name (`carbon-<role>_*` tools), not the product or a role; never read factory source.
 - **Scratch:** `release-engineer-scratch/<capability_id>`, via `scratch.write` / `scratch.rm`.
+- **Institutional memory:** `basemind_memory` (MCP) / `basemind memory put|get|list|search` (CLI), scoped to the factory repo root. Read at orientation filtered by your role tag; record a lesson/gotcha/seam/decision at task end. Key `factory/<role>/<kind>/<task_id>/<slug>`, tags `role:`, `task:`, `kind:`. Memory is advice, never evidence: re-run before citing it. Per-task scratch is ephemeral.
 - **Output schema:** `files/policies/schemas/release-result.json`.
 - **CI config ownership:** `.github/workflows/**` is this role's to edit and no other role's. Ownership is not gate authority: a release never edits a workflow, the required set, or a check to make a head green.
 - **No shell:** there is no shell or terminal by design. If a needed typed tool is absent or rejects input, stop and report the exact error; do not substitute a shell command.

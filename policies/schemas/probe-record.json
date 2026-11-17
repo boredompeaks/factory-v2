@@ -3,7 +3,7 @@
   "$id": "probe-record.json",
   "title": "probe-record",
   "version": 1,
-  "description": "Per-probe execution record for the attack catalog (probe_counting.schema_followup in policies/attack-catalog.json). One record = one distinct execution against the runtime. REFUTED requires >=1 probe per listed probe_class and total probes >= min_probes[variant]; only 'blocked' counts toward REFUTED coverage. persisted by factory probe under quality/ledger/probe/.",
+  "description": "Per-probe execution record for the attack catalog (probe_counting.schema_followup in policies/attack-catalog.json). One record = one distinct execution against the runtime. REFUTED requires >=1 counted probe per listed probe_class and total counted probes >= min_probes[variant]. An outcome of 'error' never counts toward min_probes or REFUTED on any engine; only 'blocked' and 'reproduced' can be counted executions. Engine eligibility per probe_class is defined by attack-catalog.json engine_policy and each item's engine_eligibility; an execution on an engine that is not eligible for its class is an engine fault and never coverage. Counting is computed by tools/probe_audit.py, not authored by the caller. Persisted by factory probe under quality/ledger/probe/.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -123,6 +123,11 @@
     "evidence_ref": {
       "type": "string",
       "minLength": 1
+    },
+    "engine_note": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Optional fault text for an engine fault, e.g. the SQLite OperationalError/database-is-locked message. Never used for counting."
     }
   }
 }

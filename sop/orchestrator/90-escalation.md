@@ -5,6 +5,8 @@
 - Evidence refs: evidence store record id plus hash, or a git object id.
 - The attempted resolution and its result.
 - `policies/escalation.json`, `policies/schemas/orchestrator-decision.json`.
+**Memory** Read `basemind_memory` (`list`/`search` filtered by `role:orchestrator`) at orientation; put one record at task end and whenever a seam, gotcha, or decision is found. Memory is advice, never evidence; re-run a remembered finding before citing it (`sop/00-memory.md`).
+
 **Procedure**
 1. **Detect.** Escalate when any of these is true: a predicate fails and cannot be fixed inside the role's authority; a evidence store write conflicts twice after fresh reads; policy or branch-protection drift makes the gate untrustworthy; the budget or cycle limit is exhausted with zero progress; a signature or schema is invalid; a worktree is dirty, unknown, or moved; CI fails or times out; a security or risk finding exceeds what the tier can accept; or the decision is human-only (scope change, destructive operation, policy edit, waiver).
 2. **Do not improvise.** Do not retry unchanged, widen scope, bypass a permission, substitute a shell command, edit policy, or lower a tier. A refusal is terminal for the turn.
