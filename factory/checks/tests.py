@@ -1493,6 +1493,11 @@ def _boot_env(root: Path, manage: Path, ctx: dict) -> tuple[dict[str, str], bool
         "DJANGO_SETTINGS_MODULE": "config.settings",
         "PYTHONPATH": str(manage.parent),
         "DATABASE_URL": postgres_url or "sqlite:///boottest.sqlite3",
+        # Alerting is part of a production boot. These are inert test values:
+        # without them a correct fail-loud guard (ops.E001/E002) aborts the
+        # canonical boot and every task fails BOOTTEST for the guard's success.
+        "SENTRY_DSN": "https://factory-boottest@example.invalid/0",
+        "ALERT_RECIPIENTS": "boottest@example.invalid",
     })
     return env, bool(postgres_url)
 

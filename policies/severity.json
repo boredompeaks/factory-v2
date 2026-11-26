@@ -252,5 +252,15 @@
     "none": "P2",
     "high": "P1",
     "max": "P1"
+  },
+  "DEVIATION_UNDECLARED": {
+    "none": "P2",
+    "high": "P1",
+    "max": "P1"
+  },
+  "DEBT_ACCEPTED": {
+    "none": "P3",
+    "high": "P3",
+    "max": "P2"
   }
 }

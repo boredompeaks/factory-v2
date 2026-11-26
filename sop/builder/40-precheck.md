@@ -11,6 +11,11 @@
 1. Read `required_checks` for the task context tier. Do not take the list from memory or from the task text.
 2. Subtract the tier's `builder_precheck_exclude` entries. Those checks belong to the auditor or the runtime lane; builder neither runs nor reports them.
 3. Run `SCOPE` first. A path outside `task context` fails the precheck; do not continue with a wider set.
+   If the only way to satisfy a gate is an out-of-scope path, stop and return `BLOCKED SCOPE_VIOLATION` with the forcing check and the base-state evidence. Do not widen the scope yourself.
+**Refactor-class diffs.** Splitting a function is legal: `ARCH` reads public surface by name (a `_`-private helper is internal, a relocated view is not a new export) and `MUTATION` mutates only added, non-relocated lines and deals its budget round-robin across hunks. Do not add an architecture allowance or a mutation pragma to make a split pass; if a genuinely new public symbol or a new hot spot is involved, that is a real finding.
+
+**Deviations and debt.** Before step 4, run `factory deviation --task-id <id>`. It lists the obligations the hierarchy creates: pre-existing rank-C+ blocks your hunks touch, and out-of-scope paths. Prefer the smallest in-scope change that removes the obligation. If the debt is real and cannot be improved in this task, write `accepted_debt` in the task evidence with an owner, one sentence of reasoning, an ISO expiry inside the 30-day ceiling, and a `follow_up` naming where it is paid down. Never author a `deviation-verdict.json` and never declare `forced_refactor` to justify work you chose to do; that declaration is an auditor decision and needs a verdict only the auditor may write. `DEVIATION` is excluded from the builder precheck for this reason; the obligation still reaches the gate.
+
 4. Run each remaining check with `factory check <CHECK>` at the task context tree. Use the engine the check definition or condition requires; use `none` only where the definition allows it.
 5. Parse the check's own summary and result fields (`Ran N tests` + `OK|FAILED`, or the check's structured verdict). The shell exit code corroborates; it is never the verdict. A missing summary is not a pass.
 6. On failure, make the smallest fix, create a new commit, and re-run the failed check plus any check whose surface the fix touched. Repeat up to `builder_precheck_rounds`.

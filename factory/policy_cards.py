@@ -48,6 +48,11 @@ def card_for(role: str) -> dict:
             "residual": severity["residual_severities"],
         },
         "gate_sets_by_kind": gate["gate_sets_by_kind"],
+        "deviation_rules": {
+            "debt": "pre-existing rank-C+ block your hunks touch: improve it, or declare accepted_debt with owner, <=30d expiry and follow_up",
+            "exception": "out-of-scope path: forced_refactor plus an auditor NECESSARY verdict at this head",
+            "read": "factory deviation --task-id <id>",
+        },
         "proof_rule": gate["proof_rule"],
     }
 

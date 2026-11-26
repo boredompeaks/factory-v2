@@ -327,5 +327,22 @@
       ".github/workflows/**"
     ],
     "unknown_path_policy": "ARCH_VIOLATION"
+  },
+  "public_surface_rules": {
+    "statement": "A path under public_surface publishes *names*, not every def it contains. A leading underscore is module-internal unless the module's __all__ or the package __init__ publishes it on purpose, and a def whose name was removed elsewhere in the same diff is a relocation, not a new export.",
+    "python": {
+      "backend": "python_ast",
+      "private_prefix": "_",
+      "respect_dunder_all": true,
+      "respect_package_all": true,
+      "module_level_only": true,
+      "relocated_is_not_new": true,
+      "private_new_file": true,
+      "note": "Add a tree-sitter backend by setting backend to 'symbols_tree_sitter:public_symbols' once tools/symbols_tree_sitter.py exists; no change to arch_check.py is needed."
+    },
+    "javascript": {
+      "backend": "builtin:export_syntax",
+      "note": "Only `export` statements and `export {}` lists are surface; a non-exported top-level function is module-internal."
+    }
   }
 }

@@ -10,6 +10,7 @@ from typing import Any
 
 from .state import active_lane_claims, load_task, save_task, update_task, validate_lane
 from .util import (
+    ZERO_SHA,
     FactoryError,
     evidence_dir,
     git_output,
@@ -20,9 +21,7 @@ from .util import (
     tasks_root,
     utc_now,
     write_json,
-    ZERO_SHA,
 )
-
 
 KINDS = {"DOC", "FIX", "FEATURE", "SECURITY"}
 DEFAULT_MODE = {
@@ -61,13 +60,13 @@ def validate_dispatch(kind: str, scopes: list[str]) -> list[dict[str, Any]]:
     # Dispatch rules are constraints on subsequent routing. Keeping each matching
     # rule visible here lets callers make that routing decision without inventing
     # policy or silently dropping a matching condition.
-    from .scope import path_matches
+    from .scope import dispatch_matches
 
     matched = []
     for rule in rules:
         match = rule.get("match", {})
         if kind in match.get("task_kind", []) and any(
-            path_matches(scope, pattern)
+            dispatch_matches(scope, pattern)
             for scope in scopes
             for pattern in match.get("scope_globs", [])
         ):
@@ -88,6 +87,16 @@ def _next_task_id() -> str:
     return f"{prefix}{max(numbers, default=0) + 1:03d}"
 
 
+def _resolve_base(root: Path, ref: str) -> str:
+    """Resolve --base to a commit in the task worktree, or refuse the mint."""
+    value = git_output(
+        ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"], cwd=root
+    )
+    if not re.fullmatch(r"[0-9a-f]{40}", value or ""):
+        raise FactoryError(f"base {ref!r} is not a commit in {root}")
+    return value
+
+
 def create_task(
     *,
     kind: str,
@@ -98,10 +107,14 @@ def create_task(
     mode: str | None = None,
     tier: str = "none",
     task_id: str | None = None,
+    title: str | None = None,
+    base: str | None = None,
 ) -> dict[str, Any]:
     validate_lane(lane)
     if tier not in {"none", "high", "max"}:
         raise FactoryError("tier must be none, high, or max")
+    if title is not None and not str(title).strip():
+        raise FactoryError("title must be a non-empty string when provided")
     dispatch = validate_dispatch(kind, scopes)
     selected_mode = mode or DEFAULT_MODE.get(kind)
     if selected_mode is None:
@@ -115,7 +128,10 @@ def create_task(
         path = task_dir(task_id)
         if path.exists():
             raise FactoryError(f"task already exists: {task_id}")
-        base = git_output(["rev-parse", "HEAD"], cwd=root, fallback=ZERO_SHA) or ZERO_SHA
+        if base:
+            base_sha = _resolve_base(root, str(base))
+        else:
+            base_sha = git_output(["rev-parse", "HEAD"], cwd=root, fallback=ZERO_SHA) or ZERO_SHA
         selected_branch = branch or f"task/{task_id}"
         task = {
             "task_id": task_id,
@@ -123,13 +139,15 @@ def create_task(
             "lane": lane,
             "worktree": str(root),
             "branch": selected_branch,
-            "base_sha": base,
+            "base_sha": base_sha,
             "scope": scopes,
             "phase": "BUILD",
             "mode": selected_mode,
             "tier": tier,
             "created_at": utc_now(),
         }
+        if title is not None:
+            task["title"] = str(title).strip()
         # Validate the JSON shape before writing. Dispatch matches remain policy
         # derived and are returned, not added to the unsigned task contract.
         save_task(task)

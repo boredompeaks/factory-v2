@@ -397,6 +397,19 @@
         "SECURITY_FINDING"
       ],
       "shadow": false
+    },
+    "DEVIATION": {
+      "runners": [
+        "builder",
+        "auditor"
+      ],
+      "required_in_ci": false,
+      "scope": "full",
+      "emits": [
+        "DEVIATION_UNDECLARED",
+        "DEBT_ACCEPTED"
+      ],
+      "shadow": false
     }
   },
   "hacker_runtime": {

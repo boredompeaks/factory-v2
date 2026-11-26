@@ -15,7 +15,7 @@ All check/outcome/evidence refs from this run; prior clearances; the task contex
 3. Apply V0–V3 in order: V0 refused (task context/state invalid), V1 BLOCK (FAIL check, causal P1/P2, or uncleared prior), V2 INCONCLUSIVE (required check/applicable item NOT_RUN; cause TOOL_FAULT only for listed fault codes, else BUDGET_EXHAUSTED), V3 PASS otherwise.
 4. Finalise fields exactly as the schema requires; no prose fields. Findings carry class/locus/severity/source/repro/introduced.
 5. A BLOCK carries every admitted finding from every check that returned; set `effective_on_block` per policy and force complete_hacker on the final cycle.
-6. P3/preexisting findings go to `residual` only.
+6. P3/preexisting findings go to `residual` only. Accepted debt is not a finding and not a clearance: it is a ledger entry with an owner and an expiry. Confirm `DEVIATION` PASS at this head and that every exception's verdict is yours and `NECESSARY`; otherwise V1 BLOCK and cite the DEVIATION proof.
 7. Append the same object via `factory evidence`, findings via finding, attacks via attack-log; never write quality/** directly.
 
 ## Handoff

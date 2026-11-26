@@ -38,6 +38,12 @@
       "type": "string",
       "minLength": 1
     },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Human-readable task title recorded at mint time; the builder brief carries the detail."
+    },
     "base_sha": {
       "type": "string",
       "pattern": "^[0-9a-f]{40}$"

@@ -333,6 +333,22 @@ def _call_runner(
             "PYTHONHASHSEED": "0",
             "LC_ALL": "C",
             "network": network,
+            # SCHEMA_FUZZ/DAST_BASELINE read their target from the environment
+            # (the policy has no spec path). The check runner never sees the
+            # caller's ambient environment, so forward only those keys.
+            **{
+                key: os.environ[key]
+                for key in (
+                    "FACTORY_OPENAPI_SPEC",
+                    "OPENAPI_SPEC",
+                    "schema_path",
+                    "FACTORY_SCHEMA_BASE_URL",
+                    "SCHEMA_BASE_URL",
+                    "base_url",
+                    "FACTORY_DAST_TARGET_URL",
+                )
+                if os.environ.get(key)
+            },
         },
         "policy_hash": policy_hash(),
     }

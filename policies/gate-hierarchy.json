@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "evaluation_order": [
+    "invariant",
+    "hygiene",
+    "debt",
+    "exception"
+  ],
+  "statement": "Every check has one level and one level only. Invariants are mechanical facts that must hold. Hygiene is a delta: the diff may not make state worse. Debt is the pre-existing state a task inherits; if the diff touches it, the author must improve it or own it explicitly. Exception is the smallest, declared, independently falsified departure for work a gate forces but the task scope does not cover. An exception can excuse containment (SCOPE, TEST_INFRA); it can never excuse an invariant, and it can never excuse a regression the diff introduced.",
+  "precedence_rules": [
+    "An invariant failure is always blocking and is never converted to PASS or excused.",
+    "A hygiene failure is always blocking: it means this diff created or worsened a finding, so no declaration can excuse it.",
+    "Debt never fails a check by itself; it becomes an obligation DEVIATION enforces on the author.",
+    "An exception may excuse a SCOPE or TEST_INFRA path, and only for a forced_refactor with an auditor NECESSARY verdict.",
+    "A declaration that matches no obligation is an error, not a spare allowance: pre-declaring blanket exceptions is impossible."
+  ],
+  "levels": {
+    "invariant": {
+      "order": 0,
+      "deviable": false,
+      "checks": [
+        "AGT_AUDIT",
+        "AGT_PARITY",
+        "ARCH",
+        "AUTHZ_MATRIX",
+        "BASE_FAIL_HEAD_PASS",
+        "BOOTTEST",
+        "CHANGELOG",
+        "CONVENTION",
+        "DAST_BASELINE",
+        "DEVIATION",
+        "GATE_CONTROLS",
+        "GUARD_DELTA",
+        "MUTATION",
+        "ORACLE_PROVENANCE",
+        "POLICY_DIGEST",
+        "SCHEMA_FUZZ",
+        "SECRETS",
+        "SEMGREP",
+        "SUITE",
+        "SUITE_PYTEST",
+        "TEST_SET",
+        "THREAD_RACE",
+        "ZIZMOR"
+      ],
+      "rule": "Must hold. No declaration, owner, expiry, or refactor changes the outcome."
+    },
+    "hygiene": {
+      "order": 1,
+      "deviable": false,
+      "mode": "delta",
+      "checks": [
+        "BANDIT",
+        "RADON",
+        "SMELL"
+      ],
+      "rule": "Fails only on a finding the diff introduced (new block, or rank B -> C+) or a security issue count the diff increased. Pre-existing findings are residual state, never this task's failure."
+    },
+    "debt": {
+      "order": 2,
+      "deviable": true,
+      "applies_to": [
+        "RADON",
+        "BANDIT"
+      ],
+      "kinds": [
+        "accepted_debt"
+      ],
+      "rule": "If the diff modifies a block that is already at or above the ceiling, the author must either improve it below the ceiling or declare accepted_debt with a known owner, an ISO expiry inside the ceiling, and a follow_up. Silent debt is an error; debt with an owner is a decision the auditor can review."
+    },
+    "exception": {
+      "order": 3,
+      "deviable": true,
+      "applies_to": [
+        "SCOPE",
+        "TEST_INFRA"
+      ],
+      "kinds": [
+        "forced_refactor"
+      ],
+      "forcing_checks": [
+        "RADON"
+      ],
+      "verdict": "NECESSARY",
+      "rule": "Out-of-scope paths are allowed only when a gate forces them. The declaration names the forcing check, the pre-existing block, and every path it covers. An auditor falsifier replays the base tree; the check recomputes the necessity digest, so a verdict that does not match the base state is refused."
+    }
+  },
+  "declarations_file": "deviations.json",
+  "verdict_file": "deviation-verdict.json",
+  "verdict_author": "auditor",
+  "limits": {
+    "max_days": 30,
+    "max_active": 5,
+    "min_reason_chars": 20
+  },
+  "owners": [
+    "builder",
+    "auditor",
+    "orchestrator",
+    "release-engineer",
+    "compliance",
+    "crouton-alpha"
+  ],
+  "gate_paths_never_deviable": [
+    "tools/**",
+    "policies/**",
+    ".github/workflows/**"
+  ],
+  "notes": [
+    "Declarations live in the task evidence directory, never in the product diff: the merged branch carries product changes only.",
+    "An exception excuses containment, not correctness. SUITE, TEST_SET, SECRETS and the rest still run at the same tree.",
+    "Expiry is the payment date, not a suggestion. An expired debt fails DEVIATION and therefore the gate.",
+    "The auditor verdict is a second file the builder does not author; the check pins its falsifier digest to the base tree."
+  ]
+}

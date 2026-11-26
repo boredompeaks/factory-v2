@@ -117,9 +117,11 @@
       "title": "Mutation adequacy",
       "min_tier": "none",
       "predicate_kind": "aggregate",
-      "predicate": "Kill ratio is at or above the tier threshold and every changed hunk in a high-tier path has at least one killed mutant.",
+      "predicate": "Mutants are generated only on added, non-relocated lines: a statement whose every added line moved verbatim is excluded as a relocation, and comment/docstring-only hunks are ineligible. The budget is dealt round-robin so every mutatable hunk gets min_mutants_per_hunk before any hunk gets a second mutant; MUTATION_TRUNCATED fails only when the budget cannot cover those minimums. Kill ratio is at or above the tier threshold with zero survivors in high/max risk paths. A survivor of the task's added tests is re-run against the tests that cover the changed module before it counts as a survivor.",
       "blind_spots": [
-        "Equivalent mutants survive legitimately and are scored as survivors."
+        "Equivalent mutants survive legitimately and are scored as survivors.",
+        "A moved line whose text changed is treated as new behaviour; only verbatim relocations are excluded.",
+        "Covering tests are chosen by module-stem and app-directory relevance, not by measured per-test coverage."
       ],
       "runners": [
         "builder",
@@ -247,9 +249,11 @@
       "title": "Architecture containment",
       "min_tier": "high",
       "predicate_kind": "aggregate",
-      "predicate": "A new cross-layer edge, dependency, public export, or unowned module path is refused unless capability.architecture_allow declares it with a reason.",
+      "predicate": "A new cross-layer edge, dependency, or unowned module path is refused unless capability.architecture_allow declares it with a reason. Public surface is resolved by name, not by path: a `_`-prefixed definition is module-internal unless the module's __all__ or the package __init__ publishes it, only module-level definitions count, and a definition whose name already exists on the removed side of the diff is a relocation rather than a new export. A new file whose basename is private is not surface.",
       "blind_spots": [
-        "Dynamic imports and runtime plugin loading are invisible statically."
+        "Dynamic imports and runtime plugin loading are invisible statically.",
+        "Surface resolution reads the module at head; a diff-only invocation without the worktree degrades to a line regex (private prefix and relocation only, no __all__).",
+        "The resolver is Python-only; JavaScript/TypeScript keeps the export-syntax rule until a tree-sitter backend is registered."
       ],
       "runners": [
         "builder",
@@ -474,10 +478,12 @@
       "title": "Cyclomatic complexity ceiling",
       "min_tier": "high",
       "predicate_kind": "aggregate",
-      "predicate": "radon cc over every changed non-test Python source file at the recorded tree reports no function, method, or class with cyclomatic complexity 11 or higher (radon rank C or worse). Tool absence is NOT_RUN(TOOL_ABSENT), never PASS.",
+      "predicate": "Delta over every changed non-test Python source file: the tool runs on the exact blobs at base and head and the check fails only when the diff introduces a block at rank C or worse, or pushes a block from rank B to rank C or worse. A pre-existing rank-C+ block that the diff leaves unchanged is residual state; one the diff modifies but does not cross the ceiling is debt DEVIATION makes the author own. Tool absence is NOT_RUN(TOOL_ABSENT), never PASS.",
       "blind_spots": [
         "Complexity is per block; an added branch spread across several small functions can raise total cost without crossing the per-block ceiling.",
-        "radon measures Python only; generated or non-Python source is outside this check."
+        "radon measures Python only; generated or non-Python source is outside this check.",
+        "A file renamed with edits is read as new state because only exact (R100) renames are paired with their base blob.",
+        "Pre-existing debt is only enforced when the diff's hunks overlap the block; an unrelated edit in the same file owes nothing."
       ],
       "runners": [
         "builder",
@@ -493,9 +499,10 @@
       "title": "Python security scan",
       "min_tier": "high",
       "predicate_kind": "aggregate",
-      "predicate": "bandit -r over every changed non-test Python source file at the recorded tree reports no issue at MEDIUM or higher severity. Tool absence is NOT_RUN(TOOL_ABSENT), never PASS.",
+      "predicate": "Delta over every changed non-test Python source file: the tool runs on the exact blobs at base and head and the check fails only when the count of MEDIUM/HIGH issues for a (path, test_id) pair increases or a new pair appears. Pre-existing issues are residual state. Tool absence is NOT_RUN(TOOL_ABSENT), never PASS.",
       "blind_spots": [
         "Bandit rules are pattern and AST heuristics; a clean scan does not prove absence of an exploitable path.",
+        "Delta counts per (path, test_id): one issue replacing another of the same rule in the same file is not a regression.",
         "Only changed non-test Python source is scanned, not dependencies or templates."
       ],
       "runners": [
@@ -506,6 +513,27 @@
       "fail_action": "BLOCK",
       "class_tags": [
         "SECURITY_FINDING"
+      ]
+    },
+    "DEVIATION": {
+      "title": "Declared deviation and owned debt",
+      "min_tier": "none",
+      "predicate_kind": "ledger",
+      "predicate": "Every obligation created by the gate hierarchy is either satisfied mechanically or covered by a schema-valid declaration in the task evidence: accepted_debt for a pre-existing block the diff modifies, forced_refactor for an out-of-scope path a gate forces. A forced_refactor additionally needs an auditor verdict of NECESSARY whose falsifier digest equals the recomputed base state. A declaration that matches no obligation is an error. Expired debt is an error.",
+      "blind_spots": [
+        "The auditor verdict is a separate file, not a signature: the check pins its falsifier digest to the base tree but cannot prove which persona typed the reason.",
+        "Debt obligations are computed for RADON only; a Bandit-only refactor forcing is refused rather than guessed.",
+        "A pure move of a high-complexity file is matched by exact rename detection (R100) only; a rename with edits re-reads as new blocks."
+      ],
+      "runners": [
+        "builder",
+        "auditor"
+      ],
+      "required_in_ci": false,
+      "fail_action": "BLOCK",
+      "class_tags": [
+        "DEVIATION_UNDECLARED",
+        "DEBT_ACCEPTED"
       ]
     }
   }

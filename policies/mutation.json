@@ -137,10 +137,11 @@
   },
   "max_mutants_per_hunk": 20,
   "cap_enforcement": {
-    "rule": "Require total_mutatable == total_generated or FAIL with finding mutants_truncated (MUTATION_TRUNCATED). Truncation at the cap must never silently pass.",
-    "enforced": false,
-    "reason": "No mutate-run generator lives in this harness (only gate_run.check_mutation scores fixture score/threshold/survivors; it does not generate or count mutants), so the cap cannot be enforced from policy alone.",
-    "gate_run_patch_pending": "In factory check check_mutation: if data.get('total_mutatable') is not None and data.get('total_generated') is not None and data['total_mutatable'] != data['total_generated']: findings.append(finding('MUTATION_TRUNCATED','mutants_truncated',f\"total_mutatable {data['total_mutatable']} != total_generated {data['total_generated']} (cap {policy.max_mutants_per_hunk})\")); also treat missing score/threshold as BLOCK with MUTATION_MISSING_SCORE / MUTATION_MISSING_THRESHOLD and mutants==0 as MUTATION_NO_MUTANTS. Patch text is provided for the gate_run owner; it is not applied here because gate_run.py is owned by another agent."
+    "rule": "The budget is dealt round-robin across mutatable hunks: every such hunk gets min_mutants_per_hunk before any hunk gets a second mutant. MUTATION_TRUNCATED fails only when the budget starves a mutatable hunk below its minimum. Truncating above the minimums is recorded in evidence (truncated:true) and does not fail.",
+    "enforced": true,
+    "reason": "Round-robin allocation makes starvation a real cap failure instead of a sort-order artefact; comment-only and relocated-only hunks are ineligible and never demand a mutant.",
+    "max_mutants_total": 60,
+    "max_mutants_per_hunk": 20
   },
   "language_handling": {
     "python": {
@@ -149,14 +150,27 @@
     },
     "typescript": {
       "outcome": "NOT_APPLICABLE",
-      "note": "python-only confirmed, TS N/A — delivery scope files/ + scripts/ has 0 *.ts/*.tsx/*.js changed files (vendored scratchpad/node_modules excluded); no TypeScript operators exist. NOT_APPLICABLE is fail-closed on 0 mutants (BLOCK, never PASS); a future TS engine would need its own operators and min_mutants_per_hunk guard."
+      "note": "python-only confirmed, TS N/A \u2014 delivery scope files/ + scripts/ has 0 *.ts/*.tsx/*.js changed files (vendored scratchpad/node_modules excluded); no TypeScript operators exist. NOT_APPLICABLE is fail-closed on 0 mutants (BLOCK, never PASS); a future TS engine would need its own operators and min_mutants_per_hunk guard."
     }
   },
-  "timeout_s": 300,
+  "timeout_s": 600,
   "engines": [
     "sqlite",
     "postgres"
   ],
   "known_equivalents": [],
-  "waivers": []
+  "waivers": [],
+  "scope": {
+    "changed_lines_only": true,
+    "exclude_moved_lines": true,
+    "exclude_moved_lines_note": "A statement whose every added line moved verbatim from the removed side is a relocation, not new behaviour. Mutating it would score the pre-existing test suite, not the change. A moved line whose text changed is mutated normally."
+  },
+  "test_selection": {
+    "fast": "added_tests",
+    "wide": "covering_module",
+    "wide_max_files": 4,
+    "wide_note": "Wide runs only for mutants the added tests did not kill: test files for the changed app whose name matches the module stem, then tests.py, then the rest, capped. This is what lets a refactor's moved branches be judged by the tests that already covered them without paying the app-suite cost on every mutant."
+  },
+  "max_mutants_total": 60,
+  "timeout_note": "Total mutant budget for one check run. Tiered selection keeps most mutants on the fast added-test set, so the wide covering set is paid only for survivors."
 }

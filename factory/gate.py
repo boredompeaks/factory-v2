@@ -97,6 +97,34 @@ def _configured_narrowing(task: dict[str, Any]) -> list[str] | None:
     return None
 
 
+def _check_levels() -> dict[str, str]:
+    """Map each check to its gate-hierarchy level (mechanical levels only)."""
+    policy = load_policy("gate-hierarchy.json", default={})
+    levels = policy.get("levels", {}) if isinstance(policy, dict) else {}
+    mapping: dict[str, str] = {}
+    for name, level in levels.items():
+        for check in (level.get("checks") or []) if isinstance(level, dict) else []:
+            mapping[str(check)] = str(name)
+    # Debt and exception are rules over existing checks: they never displace
+    # the mechanical level that owns the check.
+    for name, level in levels.items():
+        if not isinstance(level, dict) or level.get("deviable") is not True:
+            continue
+        for check in level.get("applies_to") or []:
+            mapping.setdefault(str(check), str(name))
+    return mapping
+
+
+def _level_order() -> dict[str, int]:
+    policy = load_policy("gate-hierarchy.json", default={})
+    levels = policy.get("levels", {}) if isinstance(policy, dict) else {}
+    return {
+        str(name): int(level.get("order", 99))
+        for name, level in levels.items()
+        if isinstance(level, dict)
+    }
+
+
 def _shadow_checks() -> set[str]:
     policy = load_policy("check-runners.json", default={})
     return {
@@ -146,6 +174,7 @@ def run_gate(
         selected_checks = required_checks
 
     shadow_set = _shadow_checks()
+    levels = _check_levels()
     mandatory_checks = [
         name
         for name in required_checks
@@ -166,6 +195,7 @@ def run_gate(
         outcomes.append(
             {
                 "check": check_id,
+                "level": levels.get(check_id, "unclassified"),
                 "result": proof.get("result"),
                 "required": required,
                 "shadow": is_shadow,
@@ -174,6 +204,10 @@ def run_gate(
             }
         )
         proofs.append(proof)
+
+    order = _level_order()
+    position = {name: index for index, name in enumerate(selected_checks)}
+    outcomes.sort(key=lambda item: (order.get(item["level"], 99), position.get(item["check"], 0)))
 
     after_hash = policy_hash()
     hash_stable = before_hash == after_hash
@@ -217,6 +251,7 @@ def run_gate(
         "policy_hash_after": after_hash,
         "policy_hash_stable": hash_stable,
         "selected_checks": selected_checks,
+        "hierarchy": {name: levels.get(name, "unclassified") for name in selected_checks},
         "checks": outcomes,
         "proof_root": root,
         "result": "PASS" if not required_failures else "FAIL",

@@ -9,7 +9,7 @@ pre-existing `report/`.
 
 - `bin/factory` — task/scope/check/gate/evidence/verify/release/k1/services/policy
 - `bin/factory-run` — bwrap wrapper (worktree rw, factory ro, evidence ro)
-- `factory/` — CLI core + 26 check runners + policy cards
+- `factory/` — CLI core + 27 check runners + policy cards
 - `agents/` and `.opencode/agents/` — 7 personas, shell + native tools, factory-write deny
 - `sop/` — 38 SOPs rewritten to the CLI
 - `skills/` and `.opencode/skills/` — 7 skills
@@ -31,6 +31,10 @@ pre-existing `report/`.
 | `factory scope check --staged` | PASS in scope, FAIL out of scope |
 | `factory release` without gate | exit 1, clean refusal (no traceback) |
 | `factory gate --release --checks` | exit 1, refuses narrowing |
+| Gate hierarchy (`policies/gate-hierarchy.json`, `DEVIATION`) | RADON/BANDIT are base/head deltas; touched pre-existing debt needs `accepted_debt`; out-of-scope refactors need an auditor `NECESSARY` verdict |
+| Refactor-class ARCH/MUTATION (`docs/REFACTOR-CLASS-CHECKS.md`) | `_`-private helpers and relocated views are not public surface; mutation excludes moved lines, deals the budget round-robin, and re-runs survivors on covering tests. IDEM `15c5710`: ARCH 0 findings, MUTATION 13/13 killed, twice |
+| Task mint and dispatch (`docs/DISPATCH-RULES.md`) | `task new --title/--base` records both in `task.json`; `/**` globs match the module file (`webhooks.py`) and product-root scopes; the recorded webhook/checkout mints now return `DR-SECURITY-01` + `DR-MONEY-01` |
+| Harness ticket 2026-11-19 (`docs/HARNESS-2026-11-19.md`) | BOOTTEST alerting env; file-level/orders dispatch globs; `tests_*.py` classifier; ruff cache outside the tree; SEMGREP baseline-relative verdict; SCHEMA_FUZZ env passthrough; 512 MB postgres tmpfs; `factory campaign request` preflight; CHANGELOG accepts the `Task-Id:` commit trailer on a re-mint (`docs/CHANGELOG-LINEAGE.md`) |
 | AGT plugin import | **OK** (`node -e import('./plugins/agt.js')`) |
 | Policy JSON | all valid; `phases/dispatch/modes/concurrency/mutation/schema-fuzz` present |
 | Persona frontmatter | `permissions:` (OpenCode V2 shape), shell + native tools |

@@ -13,6 +13,7 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from . import (
     CHECK_RUNNER_VERSION,
@@ -34,6 +35,7 @@ from . import (
     worktree_path,
 )
 from ..util import FactoryError, evidence_dir
+from . import complexity, deviation
 
 
 def _skip(check: str, ctx: dict, reason: str, command=None, tool="factory-checks") -> dict:
@@ -171,18 +173,33 @@ def check_scope(ctx: dict) -> dict:
         path for path in paths
         if not any(glob_match(path, pattern) for pattern in globs)
     ]
+    excused, declarations = deviation.scope_exceptions(ctx)
+    excused_violations = [path for path in violations if path in excused]
+    violations = [path for path in violations if path not in excused]
     result = "FAIL" if violations else "PASS"
     detail = (
         f"{len(violations)} changed path(s) outside scope: {', '.join(violations)}"
         if violations else f"all {len(paths)} changed path(s) match ctx.scope"
     )
+    if excused_violations:
+        detail += (
+            f"; {len(excused_violations)} path(s) excused by "
+            f"forced_refactor deviation(s): {', '.join(sorted(excused_violations))}"
+            " (DEVIATION validates the necessity)"
+        )
     return make_proof(
         "SCOPE", ctx, result=result,
         command=["git", "-C", str(repo_path(ctx)), "diff", "--name-only", "--no-renames",
                  f"{ctx.get('base')}..{ctx.get('head')}"],
         tool_name="git", version=tool_version("git", ctx=ctx),
         exit_code=1 if violations else 0,
-        stdout=canonical_json({"paths": paths, "scope": list(globs), "violations": violations}),
+        stdout=canonical_json({
+            "paths": paths,
+            "scope": list(globs),
+            "violations": violations,
+            "excused": excused_violations,
+            "deviations": [item.get("id") for item in declarations],
+        }),
         detail=detail,
     )
 
@@ -231,7 +248,14 @@ def check_convention(ctx: dict) -> dict:
     if not ruff:
         return _absent("CONVENTION", ctx, "ruff binary is not on PATH", ["ruff", "check"], "ruff")
     command = [ruff, "check", "--output-format=json", *files]
-    proc = run_process(command, ctx=ctx, cwd=worktree, timeout=180)
+    # The gate runner mounts the tree read-only; ruff otherwise tries to write
+    # backend/.ruff_cache and exits 2 with unparseable output. The cache is
+    # disposable, so keep it outside the tree.
+    with tempfile.TemporaryDirectory(prefix="factory-ruff-cache-") as cache:
+        proc = run_process(
+            command, ctx=ctx, cwd=worktree, timeout=180,
+            env={"RUFF_CACHE_DIR": cache},
+        )
     version = tool_version("ruff", ctx=ctx, cwd=worktree)
     if proc["error"]:
         return _tool_failure("CONVENTION", ctx, proc, "ruff", version, proc["error"])
@@ -571,7 +595,32 @@ def check_authz_matrix(ctx: dict) -> dict:
     )
 
 
+def _semgrep_results(doc: Any) -> list[dict]:
+    return doc.get("results") if isinstance(doc, dict) and isinstance(doc.get("results"), list) else []
+
+
+def _finding_touches_added(finding: dict, added: dict[str, set[int]]) -> bool:
+    path = str(finding.get("path") or "").replace("\\", "/").lstrip("./")
+    lines = added.get(path)
+    if not lines:
+        return False
+    start = finding.get("start", {}).get("line")
+    end = finding.get("end", {}).get("line") or start
+    if not isinstance(start, int):
+        return False
+    if not isinstance(end, int):
+        end = start
+    return any(line in lines for line in range(start, end + 1))
+
+
 def check_semgrep(ctx: dict) -> dict:
+    """Zero *new* findings, not zero findings in files the task touched.
+
+    The predicate is baseline-relative. A changed file inherits its old
+    findings, so a whole-file scan is evidence only; the verdict comes from
+    semgrep's ``--baseline-commit`` (or, when that cannot run, from findings
+    whose span intersects an added line).
+    """
     paths, problem = _diff_paths("SEMGREP", ctx)
     if problem:
         return problem
@@ -587,137 +636,182 @@ def check_semgrep(ctx: dict) -> dict:
     binary = executable("semgrep")
     if not binary:
         return _absent("SEMGREP", ctx, "semgrep binary is not on PATH", ["semgrep", "--config", str(config), "--json"], "semgrep")
-    command = [binary, "--config", str(config), "--json", *files]
-    proc = run_process(command, ctx=ctx, cwd=worktree, timeout=240)
+    raw_command = [binary, "--config", str(config), "--json", *files]
+    raw_proc = run_process(raw_command, ctx=ctx, cwd=worktree, timeout=240)
     version = tool_version("semgrep", ctx=ctx, cwd=worktree)
-    if proc["error"]:
-        return _tool_failure("SEMGREP", ctx, proc, "semgrep", version, proc["error"])
-    doc, parse_error = _json_from_output(proc["stdout"])
-    if parse_error or not isinstance(doc, dict):
-        return _tool_failure("SEMGREP", ctx, proc, "semgrep", version, f"invalid JSON output: {parse_error}")
-    findings = doc.get("results") or []
-    result = "PASS" if proc["exit"] == 0 and not findings else "FAIL"
+    if raw_proc["error"]:
+        return _tool_failure("SEMGREP", ctx, raw_proc, "semgrep", version, raw_proc["error"])
+    raw_doc, raw_error = _json_from_output(raw_proc["stdout"])
+    if raw_error or not isinstance(raw_doc, dict):
+        return _tool_failure("SEMGREP", ctx, raw_proc, "semgrep", version, f"invalid JSON output: {raw_error}")
+    raw_findings = _semgrep_results(raw_doc)
+
+    baseline = str(ctx.get("base") or "")
+    verdict_command = raw_command
+    verdict_proc = raw_proc
+    verdict_findings: list[dict] | None = None
+    baseline_mode = "added-lines"
+    root = repo_path(ctx)
+    if baseline and root is not None:
+        exists = run_process(
+            ["git", "-C", str(root), "cat-file", "-e", f"{baseline}^{{commit}}"],
+            ctx=ctx, cwd=root, timeout=20,
+        )
+        if exists["exit"] == 0:
+            command = [binary, "--config", str(config), "--json", "--baseline-commit", baseline, *files]
+            proc = run_process(command, ctx=ctx, cwd=worktree, timeout=240)
+            if not proc["error"] and proc["exit"] in (0, 1):
+                doc, parse_error = _json_from_output(proc["stdout"])
+                if not parse_error and isinstance(doc, dict):
+                    verdict_command = command
+                    verdict_proc = proc
+                    verdict_findings = _semgrep_results(doc)
+                    baseline_mode = f"commit {baseline[:12]}"
+    if verdict_findings is None:
+        diff, diff_error = get_diff(ctx, 0)
+        if diff_error:
+            return make_proof(
+                "SEMGREP", ctx, result="FAIL", command=verdict_command,
+                tool_name="semgrep", version=version, exit_code=verdict_proc["exit"],
+                stdout=raw_proc["stdout"],
+                detail=f"cannot distinguish new findings: {diff_error}",
+            )
+        added_by_path: dict[str, set[int]] = {}
+        for row in _added_lines(diff["stdout"]):
+            added_by_path.setdefault(row["path"], set()).add(row["line"])
+        verdict_findings = [f for f in raw_findings if _finding_touches_added(f, added_by_path)]
+
+    result = "PASS" if not verdict_findings else "FAIL"
+    detail = (
+        f"semgrep scanned {len(files)} changed file(s); "
+        f"{len(raw_findings)} raw finding(s), {len(verdict_findings)} new "
+        f"(baseline={baseline_mode})"
+    )
     return make_proof(
-        "SEMGREP", ctx, result=result, command=command, tool_name="semgrep",
-        version=version, exit_code=proc["exit"], stdout=proc["stdout"],
-        detail=f"semgrep scanned {len(files)} changed file(s); {len(findings)} finding(s)",
+        "SEMGREP", ctx, result=result, command=verdict_command, tool_name="semgrep",
+        version=version, exit_code=0 if not verdict_findings else 1,
+        stdout=canonical_json({"raw": raw_findings, "new": verdict_findings}),
+        detail=detail,
     )
 
 
-def _product_python(ctx: dict) -> str | None:
-    """Resolve the product interpreter that owns the lane's dependencies."""
-    root = worktree_path(ctx) or repo_path(ctx)
-    if root is None:
-        return None
-    for parts in (
-        ("backend", "venv", "bin", "python"),
-        ("backend", ".venv", "bin", "python"),
-        (".venv", "bin", "python"),
-    ):
-        candidate = root.joinpath(*parts)
-        if candidate.is_file():
-            return os.fspath(candidate)
-    return None
-
-
-def _module_prefix(
-    ctx: dict, python: str | None, module: str,
-) -> tuple[list[str] | None, str | None]:
-    """Prefer ``<product python> -m <module>``; fall back to a PATH binary.
-
-    Returns the argv prefix to use and the version string when the module was
-    resolved through the product interpreter.
-    """
-    if python:
-        probe = run_process(
-            [python, "-m", module, "--version"], ctx=ctx,
-            cwd=worktree_path(ctx), timeout=30,
-        )
-        if probe["exit"] == 0:
-            text = (probe["stdout"] or probe["stderr"]).strip().splitlines()
-            version = text[0][:160] if text else "version query unavailable"
-            return [python, "-m", module], version
-    binary = executable(module)
-    if not binary:
-        return None, None
-    return [binary], None
-
-
 def check_radon(ctx: dict) -> dict:
-    paths, problem = _diff_paths("RADON", ctx)
+    """Cyclomatic complexity, scored as a delta rather than absolute state.
+
+    A rank-C+ block that already existed at ``base`` is debt, not this task's
+    failure. The check fails only when the diff *introduces* a hot spot (a new
+    block at rank C or worse) or pushes an existing block over the ceiling
+    (rank B -> C+). Worsened pre-existing blocks and touched residual blocks are
+    reported for ``DEVIATION`` to make the author own.
+    """
+    state, problem = complexity.radon_state(ctx)
     if problem:
-        return problem
-    worktree = worktree_path(ctx)
-    if worktree is None:
-        return make_proof("RADON", ctx, result="FAIL", detail="ctx.worktree is required")
-    files = _python_changed(paths, worktree)
-    if not files:
-        return _skip("RADON", ctx, "no changed non-test Python source files")
-    prefix, module_version = _module_prefix(ctx, _product_python(ctx), "radon")
-    if prefix is None:
-        return _absent(
-            "RADON", ctx,
-            "radon is unavailable: no product venv module and no radon binary on PATH",
-            ["radon", "cc", "-s", "-j", "--min", "C"], "radon",
+        if problem.get("version") == "absent":
+            return _absent("RADON", ctx, problem["detail"], problem["command"], "radon")
+        return make_proof(
+            "RADON", ctx, result="FAIL", command=problem.get("command"),
+            tool_name="radon", version=problem.get("version") or "unknown",
+            exit_code=problem.get("exit"), stdout=problem.get("stdout", ""),
+            detail=problem["detail"],
         )
-    command = [*prefix, "cc", "-s", "-j", "--min", "C", *files]
-    proc = run_process(command, ctx=ctx, cwd=worktree, timeout=180)
-    version = module_version or tool_version("radon", ctx=ctx, cwd=worktree)
-    if proc["error"]:
-        return _tool_failure("RADON", ctx, proc, "radon", version, proc["error"])
-    doc, parse_error = _json_from_output(proc["stdout"])
-    if parse_error or not isinstance(doc, dict):
-        return _tool_failure("RADON", ctx, proc, "radon", version, f"invalid JSON output: {parse_error}")
-    findings = []
-    for path, blocks in doc.items():
-        if not isinstance(blocks, list):
-            continue
-        for block in blocks:
-            if isinstance(block, dict) and str(block.get("rank", "")).upper() in {"C", "D", "E", "F"}:
-                findings.append({"path": path, "name": block.get("name"), "complexity": block.get("complexity"), "rank": block.get("rank")})
+    assert state is not None
+    if not state["files"]:
+        return _skip("RADON", ctx, "no changed non-test Python source files")
+    groups = complexity.per_file(state)
+    summary = {
+        name: sum(len(groups[path][name]) for path in groups)
+        for name in ("new", "crossed", "worsened", "residual", "improved")
+    }
+    findings = [
+        {"kind": name, "path": path, **record}
+        for path in groups
+        for name in ("new", "crossed")
+        for record in groups[path][name]
+    ]
+    result = "FAIL" if findings else "PASS"
+    detail = (
+        f"radon delta over {len(groups)} changed non-test file(s): "
+        f"{summary['new']} new rank-C+ block(s), {summary['crossed']} crossed the ceiling, "
+        f"{summary['worsened']} pre-existing block(s) worsened (debt), "
+        f"{summary['residual']} residual, {summary['improved']} improved"
+    )
+    artifacts: list[dict] = []
+    task_id = ctx.get("task_id")
+    if task_id:
+        text = canonical_json({
+            "files": state["files"],
+            "renames": state["renames"],
+            "per_file": groups,
+            "summary": summary,
+        })
+        try:
+            artifact_path = evidence_dir(str(task_id)) / "artifacts" / "RADON.json"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_text(text, encoding="utf-8")
+            artifacts = [{
+                "path": str(artifact_path),
+                "sha256": sha256(text),
+                "kind": "radon-delta",
+            }]
+        except (FactoryError, OSError):
+            pass
     return make_proof(
-        "RADON", ctx, result="FAIL" if findings else "PASS",
-        command=command, tool_name="radon", version=version,
-        exit_code=1 if findings else 0, stdout=canonical_json(doc),
-        detail=f"radon scanned {len(files)} changed non-test file(s); {len(findings)} rank-C-or-worse block(s)",
+        "RADON", ctx, result=result, tool_name="radon",
+        version=state.get("version") or tool_version("radon", ctx=ctx, cwd=repo_path(ctx)),
+        exit_code=1 if findings else 0, stdout=canonical_json(summary),
+        artifacts=artifacts, detail=detail[:1900],
     )
 
 
 def check_bandit(ctx: dict) -> dict:
-    paths, problem = _diff_paths("BANDIT", ctx)
+    """Bandit, scored as a delta: only issues the diff adds can block."""
+    state, problem = complexity.bandit_state(ctx)
     if problem:
-        return problem
-    worktree = worktree_path(ctx)
-    if worktree is None:
-        return make_proof("BANDIT", ctx, result="FAIL", detail="ctx.worktree is required")
-    files = _python_changed(paths, worktree)
-    if not files:
-        return _skip("BANDIT", ctx, "no changed non-test Python source files")
-    prefix, module_version = _module_prefix(ctx, _product_python(ctx), "bandit")
-    if prefix is None:
-        return _absent(
-            "BANDIT", ctx,
-            "bandit is unavailable: no product venv module and no bandit binary on PATH",
-            ["bandit", "-f", "json", "-q"], "bandit",
+        if problem.get("version") == "absent":
+            return _absent("BANDIT", ctx, problem["detail"], problem["command"], "bandit")
+        return make_proof(
+            "BANDIT", ctx, result="FAIL", command=problem.get("command"),
+            tool_name="bandit", version=problem.get("version") or "unknown",
+            exit_code=problem.get("exit"), stdout=problem.get("stdout", ""),
+            detail=problem["detail"],
         )
-    command = [*prefix, "-r", "-f", "json", "-q", *files]
-    proc = run_process(command, ctx=ctx, cwd=worktree, timeout=180)
-    version = module_version or tool_version("bandit", ctx=ctx, cwd=worktree)
-    if proc["error"]:
-        return _tool_failure("BANDIT", ctx, proc, "bandit", version, proc["error"])
-    doc, parse_error = _json_from_output(proc["stdout"])
-    if parse_error or not isinstance(doc, dict):
-        return _tool_failure("BANDIT", ctx, proc, "bandit", version, f"invalid JSON output: {parse_error}")
-    findings = [
-        issue for issue in (doc.get("results") or [])
-        if isinstance(issue, dict)
-        and str(issue.get("issue_severity", "")).upper() in {"MEDIUM", "HIGH"}
-    ]
+    assert state is not None
+    if not state["files"]:
+        return _skip("BANDIT", ctx, "no changed non-test Python source files")
+    delta = complexity.bandit_delta(state)
+    new = delta["new"]
+    data = {
+        "files": state["files"],
+        "renames": state["renames"],
+        "base_counts": state["base"],
+        "head_counts": state["head"],
+        "new": new,
+        "removed": delta["removed"],
+    }
+    artifacts: list[dict] = []
+    task_id = ctx.get("task_id")
+    if task_id:
+        text = canonical_json(data)
+        try:
+            artifact_path = evidence_dir(str(task_id)) / "artifacts" / "BANDIT.json"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_text(text, encoding="utf-8")
+            artifacts = [{
+                "path": str(artifact_path),
+                "sha256": sha256(text),
+                "kind": "bandit-delta",
+            }]
+        except (FactoryError, OSError):
+            pass
     return make_proof(
-        "BANDIT", ctx, result="FAIL" if findings else "PASS",
-        command=command, tool_name="bandit", version=version,
-        exit_code=1 if findings else 0, stdout=proc["stdout"],
-        detail=f"bandit scanned {len(files)} changed non-test file(s); {len(findings)} MEDIUM/HIGH issue(s)",
+        "BANDIT", ctx, result="FAIL" if new else "PASS",
+        tool_name="bandit", version=tool_version("bandit", ctx=ctx, cwd=repo_path(ctx)),
+        exit_code=1 if new else 0, stdout=canonical_json(data),
+        artifacts=artifacts,
+        detail=(
+            f"bandit delta over {len(state['files'])} changed non-test file(s): "
+            f"{len(new)} new MEDIUM/HIGH issue(s), {len(delta['removed'])} removed"
+        ),
     )
 
 
@@ -1204,6 +1298,31 @@ def _parse_path_cell(value: str) -> list[str]:
     return parts
 
 
+COMMIT_TASK_TRAILER = re.compile(
+    r"^Task(?:-Id)?:\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _commit_task_ids(ctx: dict) -> set[str]:
+    """Task ids named by ``Task-Id:`` trailers in the task's commit range.
+
+    A re-mint keeps the original id in the changelog row. The live task id is
+    then the wrong key; the commit trailer is the stable one.
+    """
+    root = repo_path(ctx)
+    base, head = ctx.get("base"), ctx.get("head")
+    if root is None or not base or not head:
+        return set()
+    proc = run_process(
+        ["git", "-C", str(root), "log", "--no-merges", "--format=%B", f"{base}..{head}"],
+        ctx=ctx, cwd=root, timeout=30,
+    )
+    if proc["error"] or proc["exit"] != 0:
+        return set()
+    return {match.group(1) for match in COMMIT_TASK_TRAILER.finditer(proc["stdout"])}
+
+
 def check_changelog(ctx: dict) -> dict:
     paths, problem = _diff_paths("CHANGELOG", ctx)
     if problem:
@@ -1260,6 +1379,13 @@ def check_changelog(ctx: dict) -> dict:
         errors.append(f"no added changelog row in {changelog_path} for non-exempt changed paths")
     if rows and missing_columns:
         errors.append(f"changelog table is missing required columns: {missing_columns}")
+    trailer_ids = _commit_task_ids(ctx)
+    if trailer_ids:
+        allowed_task_ids = trailer_ids
+        task_id_source = "commit-trailer"
+    else:
+        allowed_task_ids = {str(ctx["task_id"])} if ctx.get("task_id") else set()
+        task_id_source = "task-context"
     coverage: dict[str, list[str]] = {}
     for index, row in enumerate(rows):
         prefix = f"row {index + 1}"
@@ -1271,8 +1397,11 @@ def check_changelog(ctx: dict) -> dict:
         row_paths = _parse_path_cell(row.get("paths", ""))
         if not task:
             errors.append(f"{prefix} has empty task_id")
-        elif ctx.get("task_id") and task != str(ctx["task_id"]):
-            errors.append(f"{prefix} task_id {task!r} does not match {ctx['task_id']!r}")
+        elif allowed_task_ids and task not in allowed_task_ids:
+            errors.append(
+                f"{prefix} task_id {task!r} does not match "
+                f"{sorted(allowed_task_ids)!r} ({task_id_source})"
+            )
         try:
             _datetime.date.fromisoformat(date)
         except ValueError:
@@ -1296,7 +1425,14 @@ def check_changelog(ctx: dict) -> dict:
     uncovered = sorted(path for path in required_paths if path not in coverage)
     if uncovered:
         errors.append(f"non-exempt changed paths absent from added changelog rows: {uncovered}")
-    data = {"changed_paths": paths, "added_rows": rows, "coverage": coverage, "errors": errors}
+    data = {
+        "changed_paths": paths,
+        "added_rows": rows,
+        "coverage": coverage,
+        "allowed_task_ids": sorted(allowed_task_ids),
+        "task_id_source": task_id_source,
+        "errors": errors,
+    }
     return make_proof(
         "CHANGELOG", ctx, result="FAIL" if errors else "PASS",
         command=["git", "-C", str(repo_path(ctx)), "diff", "--unified=0", f"{ctx.get('base')}..{ctx.get('head')}"],

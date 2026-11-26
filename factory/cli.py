@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import __version__
+from .campaign import campaign_request
 from .gate import evidence as get_evidence
 from .gate import execute_check, run_gate, verify
 from .proof import make_proof, save_proof
@@ -32,6 +33,7 @@ from .util import (
     FactoryError,
     REPO_ROOT,
     evidence_dir,
+    evidence_root,
     run,
 )
 
@@ -61,6 +63,8 @@ def _task_new(args: argparse.Namespace) -> dict[str, Any]:
         mode=args.mode,
         tier=args.tier,
         task_id=args.task_id,
+        title=args.title,
+        base=args.base,
     )
 
 
@@ -499,6 +503,8 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--mode")
     new.add_argument("--tier", choices=("none", "high", "max"), default="none")
     new.add_argument("--task-id")
+    new.add_argument("--title", help="human title, recorded in task.json (not a brief)")
+    new.add_argument("--base", help="commit or ref to branch from (default: worktree HEAD)")
     _add_json(new)
     new.set_defaults(handler=_task_new)
     show = task_sub.add_parser("show", help="show a task")
@@ -624,6 +630,19 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json(card)
     card.set_defaults(handler=_policy_card)
 
+    campaign_parser = commands.add_parser(
+        "campaign", help="validate the release-train hacker dispatch request"
+    )
+    campaign_sub = campaign_parser.add_subparsers(dest="campaign_action", required=True)
+    request = campaign_sub.add_parser(
+        "request", help="validate the envelope/model/prompt and print the subagent request"
+    )
+    request.add_argument("--envelope", required=True, help="hacker-envelope JSON file")
+    request.add_argument("--prompt", required=True, help="campaign prompt file")
+    request.add_argument("--variant", choices=("high", "max"), required=True)
+    _add_json(request)
+    request.set_defaults(handler=_campaign_request)
+
     probe_parser = commands.add_parser("probe", help="audit hacker campaign probe coverage")
     probe_sub = probe_parser.add_subparsers(dest="probe_action", required=True)
     audit = probe_sub.add_parser("audit", help="count eligible probe executions against the catalog")
@@ -632,6 +651,18 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--item", action="append", default=[], help="catalog item id (repeatable)")
     _add_json(audit)
     audit.set_defaults(handler=_probe_audit)
+
+    deviation_parser = commands.add_parser(
+        "deviation", help="show declared deviations, owned debt, and necessity digests"
+    )
+    deviation_parser.add_argument("--task-id")
+    _add_json(deviation_parser)
+    deviation_parser.set_defaults(handler=_deviation)
+
+    debt_parser = commands.add_parser("debt", help="list accepted debt across task evidence")
+    debt_parser.add_argument("--include-expired", action="store_true")
+    _add_json(debt_parser)
+    debt_parser.set_defaults(handler=_debt)
 
     return parser
 
@@ -650,6 +681,59 @@ def _release(args: argparse.Namespace) -> dict[str, Any]:
 def _normalize_task_arg(args: argparse.Namespace) -> None:
     if hasattr(args, "task_id_option"):
         args.task_id = args.task_id_option or getattr(args, "task_id", None)
+
+
+def _deviation(args: argparse.Namespace) -> dict[str, Any]:
+    task_id = _task_id(args.task_id)
+    proof = execute_check("DEVIATION", task_id)
+    artifact = evidence_dir(task_id) / "artifacts" / "DEVIATION.json"
+    ledger: Any = None
+    if artifact.is_file():
+        try:
+            ledger = json.loads(artifact.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            ledger = None
+    return {
+        "result": proof.get("result"),
+        "detail": proof.get("detail"),
+        "ledger": ledger,
+    }
+
+
+def _debt(args: argparse.Namespace) -> dict[str, Any]:
+    import datetime as _datetime
+
+    today = _datetime.date.today().isoformat()
+    rows = []
+    for path in sorted(evidence_root().glob("*/deviations.json")):
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        for item in doc.get("deviations") or []:
+            if not isinstance(item, dict) or item.get("kind") != "accepted_debt":
+                continue
+            expires = str(item.get("expires") or "")
+            expired = bool(expires) and expires < today
+            if expired and not args.include_expired:
+                continue
+            rows.append({
+                "task_id": doc.get("task_id"),
+                "id": item.get("id"),
+                "check": item.get("check"),
+                "path": item.get("path"),
+                "owner": item.get("owner"),
+                "expires": expires,
+                "expired": expired,
+                "follow_up": item.get("follow_up"),
+            })
+    return {"count": len(rows), "debt": rows}
+
+
+def _campaign_request(args: argparse.Namespace) -> dict[str, Any]:
+    return campaign_request(args.envelope, args.prompt, args.variant)
 
 
 def _probe_audit(args: argparse.Namespace) -> dict[str, Any]:

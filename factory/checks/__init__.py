@@ -344,6 +344,7 @@ def is_test_path(path: str) -> bool:
     return (
         name in {"tests.py", "test.py"}
         or name.startswith("test_")
+        or name.startswith("tests_")
         or name.endswith("_test.py")
         or ".test." in name
         or ".spec." in name
@@ -435,6 +436,7 @@ from . import tests as _tests  # noqa: E402
 from . import mutation as _mutation  # noqa: E402
 from . import fuzz as _fuzz  # noqa: E402
 from . import dast as _dast  # noqa: E402
+from . import deviation as _deviation  # noqa: E402
 
 CHECKS = {
     "SCOPE": _static.check_scope,
@@ -464,6 +466,7 @@ CHECKS = {
     "AGT_AUDIT": _static.check_agt_audit,
     "RADON": _static.check_radon,
     "BANDIT": _static.check_bandit,
+    "DEVIATION": _deviation.check_deviation,
 }
 
 

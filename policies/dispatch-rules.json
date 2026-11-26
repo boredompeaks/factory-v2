@@ -176,6 +176,7 @@
           "backend/**/permissions/**",
           "backend/**/admin/**",
           "backend/**/webhooks/**",
+          "backend/**/webhooks*.py",
           "backend/**/common/**",
           "backend/auth/**",
           "backend/mfa/**",
@@ -201,7 +202,9 @@
           "backend/**/api/**",
           "backend/**/serializers/**",
           "**/*.sql",
-          "evidence/**"
+          "evidence/**",
+          "backend/**/views*.py",
+          "backend/**/views/*.py"
         ],
         "keywords": [
           "auth",
@@ -269,7 +272,12 @@
           "backend/accounts/models.py",
           "backend/common/roles.py",
           "backend/common/fields.py",
-          "backend/config/settings.py"
+          "backend/config/settings.py",
+          "backend/**/views/checkout*.py",
+          "backend/**/views/payment*.py",
+          "backend/**/views/refund*.py",
+          "backend/**/orders/**",
+          "backend/**/webhooks*.py"
         ],
         "keywords": [
           "refund",
@@ -296,7 +304,8 @@
           "account",
           "checkout",
           "settings"
-        ]
+        ],
+        "scope_globs_note": "A trailing '/**' also matches the module of that name (webhooks/ or webhooks.py); file-level forms are listed explicitly for tools that do not share that rule. `backend/**/orders/**` makes the money review cover the orders application, including `orders/views/checkout.py`, without pulling every backend view into a money dispatch."
       },
       "require_before": "builder"
     },

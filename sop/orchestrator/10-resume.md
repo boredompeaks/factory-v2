@@ -15,7 +15,7 @@
 5. Rebuild the task table from checkpoint plus evidence store refs: task id, kind, owner, lane, task context, head/tree, status (`done`, `in-flight`, `queued`, `blocked`, `parked`), and next step.
 6. Check continuity: same `lineage_id`; tier may rise, never fall. If the live head differs from the task context head, do not reuse the task context; re-mint from live state.
 7. Select exactly one task: the in-flight task with no final verdict; otherwise the next queued task in priority order. A `parked` task is not selected without a human-authored resume record; do not invent, split, or rename a task to make progress.
-8. Check task context freshness against `policies/phases.json.task_lifecycle` (the idle TTL and re-mint triggers are defined there; do not restate the numbers) and `policy_digest`. Re-mint with `parent_task_id` when stale; keep the remaining allowance and scope.
+8. Check task context freshness against `policies/phases.json.task_lifecycle` (the idle TTL and re-mint triggers are defined there; do not restate the numbers) and `policy_digest`. Re-mint from live state when stale; keep the remaining allowance and scope. Carry the original task id as a `Task-Id: <original>` trailer on every re-mint commit and keep that original id in the changelog row: `CHANGELOG` keys the row to the commit trailer, not to the live re-mint id (`docs/CHANGELOG-LINEAGE.md`).
 9. Emit `RECORD` with the recovered refs and the selected task id, then dispatch the owning SOP at its recorded step (`20`-`80`).
 10. If state cannot be reconciled, `HALT`; never guess, reset, clean, or restart from scratch.
 **Routing / handoff**

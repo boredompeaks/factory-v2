@@ -227,7 +227,9 @@ def is_test_path(path: str) -> bool:
     p = path.replace("\\", "/").lower()
     name = p.rsplit("/", 1)[-1]
     return (
-        name.startswith("test_")
+        name in {"tests.py", "test.py"}
+        or name.startswith("test_")
+        or name.startswith("tests_")
         or name.endswith("_test.py")
         or name.endswith("_test.ts")
         or ".test.ts" in name

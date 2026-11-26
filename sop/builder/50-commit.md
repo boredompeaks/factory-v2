@@ -11,7 +11,7 @@
 1. Run `git status` in the assigned worktree. Confirm the only changes are the intended scoped paths and that no scratch, secret, generated, out-of-scope file, or modified read-only exploit/repro test is present.
 2. Run `git diff` at validated refs and read the staged change set. A path outside `task context` is a block; do not commit around it. Confirm each edited function or block carries the task id and that no comment narrates the diff.
 3. Compose the message as `<scope>: <summary>` in the repository's existing style. It describes the change, not the process.
-4. Call `git commit` with the task context id, the task context tree, and the explicit path list. Never use a bypass, force, amend, or a path list wider than the reviewed set. The server validates scope and test-infrastructure denies.
+4. Call `git commit` with the task context id, the task context tree, and the explicit path list. Add `Task-Id: <id>` as a trailer when the changelog row carries an older id from the same re-mint chain; the trailer is what `CHANGELOG` validates. Never use a bypass, force, amend, or a path list wider than the reviewed set. The server validates scope and test-infrastructure denies.
 5. Confirm the result with `git log` and `git status`. Record the new head, tree, and branch; a commit that did not change head is a failure.
 6. Never push, merge, rebase, cherry-pick, or open/comment/close a pull request. Durability push belongs to the auditor; promotion belongs to the release-engineer.
 7. If the commit is refused, preserve the worktree and return the exact refusal. Do not reset, discard, or retry with a different path list.

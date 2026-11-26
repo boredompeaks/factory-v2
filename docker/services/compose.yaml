@@ -35,8 +35,10 @@ services:
       POSTGRES_PASSWORD: pg2a_local_test_only
     ports:
       - "127.0.0.1:5432:5432"
+    # 20-suite repetition checks (thread-race, auditor tier) create and drop
+    # several test databases per run; 128m fills before the run ends.
     tmpfs:
-      - /var/lib/postgresql/data:rw,nosuid,nodev,size=128m
+      - /var/lib/postgresql/data:rw,nosuid,nodev,size=512m
     mem_limit: 1g
     cpus: 2.0
     # Room for the suite's working set before the kernel OOM-kills a backend,
@@ -89,8 +91,10 @@ services:
       POSTGRES_PASSWORD: pg2b_local_test_only
     ports:
       - "127.0.0.1:5433:5432"
+    # 20-suite repetition checks (thread-race, auditor tier) create and drop
+    # several test databases per run; 128m fills before the run ends.
     tmpfs:
-      - /var/lib/postgresql/data:rw,nosuid,nodev,size=128m
+      - /var/lib/postgresql/data:rw,nosuid,nodev,size=512m
     mem_limit: 1g
     cpus: 2.0
     # Room for the suite's working set before the kernel OOM-kills a backend,

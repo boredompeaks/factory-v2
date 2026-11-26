@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import ast
-import os
 import shutil
-import time
 import tempfile
+import time
 from pathlib import Path
 
+from ..util import FactoryError, evidence_dir
 from . import (
     canonical_json,
     changed_paths,
@@ -18,11 +18,10 @@ from . import (
     read_json,
     repo_path,
     run_process,
+    sha256,
     worktree_path,
 )
-from .static import _added_lines
 from .tests import _pytest_command, _pytest_version, _test_env, _test_nodeids
-
 
 _AOR = {
     ast.Add: ast.Sub,
@@ -43,9 +42,17 @@ _LCR = {ast.And: ast.Or, ast.Or: ast.And}
 _IMPLEMENTED_OPERATORS = frozenset({"AOR", "ROR", "LCR", "NEG", "CR"})
 
 
-def _parse_hunks(diff: str) -> tuple[dict[str, dict[int, int]], dict[str, int]]:
+def _parse_hunks(diff: str) -> tuple[dict, dict, dict, dict]:
+    """Index the diff by file.
+
+    Returns ``(line_to_hunk, hunk_counts, added_text, removed_text)``. The
+    removed text is what lets the mutator tell a *relocation* from new
+    behaviour: a moved statement keeps its normalized text on both sides.
+    """
     line_to_hunk: dict[str, dict[int, int]] = {}
     hunk_counts: dict[str, int] = {}
+    added_text: dict[str, dict[int, str]] = {}
+    removed_text: dict[str, set[str]] = {}
     current = None
     hunk_id = 0
     new_line = 0
@@ -53,14 +60,15 @@ def _parse_hunks(diff: str) -> tuple[dict[str, dict[int, int]], dict[str, int]]:
     for raw in diff.splitlines():
         if raw.startswith("+++ "):
             current = raw[4:].split("\t", 1)[0].strip()
-            if current.startswith("b/"):
-                current = current[2:]
+            current = current.removeprefix("b/")
             if current == "/dev/null":
                 current = None
             if current:
                 current = current.replace("\\", "/")
                 line_to_hunk.setdefault(current, {})
                 hunk_counts.setdefault(current, 0)
+                added_text.setdefault(current, {})
+                removed_text.setdefault(current, set())
             in_hunk = False
             continue
         match = __import__("re").match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", raw)
@@ -75,10 +83,123 @@ def _parse_hunks(diff: str) -> tuple[dict[str, dict[int, int]], dict[str, int]]:
         marker = raw[:1] if raw else " "
         if marker == "+":
             line_to_hunk[current][new_line] = hunk_id
+            added_text[current][new_line] = raw[1:]
             new_line += 1
+        elif marker == "-":
+            removed_text[current].add(raw[1:].strip())
         elif marker == " ":
             new_line += 1
-    return line_to_hunk, hunk_counts
+    return line_to_hunk, hunk_counts, added_text, removed_text
+
+
+def _node_span(node: ast.AST) -> tuple[int, int]:
+    start = int(getattr(node, "lineno", 0) or 0)
+    return start, int(getattr(node, "end_lineno", start) or start)
+
+
+def _is_relocated(node: ast.AST, added: dict[int, str], removed: set[str]) -> bool:
+    """True when every line of the node moved here verbatim from elsewhere."""
+    start, end = _node_span(node)
+    texts = []
+    for line in range(start, end + 1):
+        text = added.get(line)
+        if text is None:
+            return False
+        stripped = text.strip()
+        if stripped:
+            texts.append(stripped)
+    return bool(texts) and all(text in removed for text in texts)
+
+
+def _docstring_lines(tree: ast.AST) -> set[int]:
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if not isinstance(body, list) or not body:
+            continue
+        first = body[0]
+        if not isinstance(first, ast.Expr):
+            continue
+        value = first.value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            start, end = _node_span(first)
+            lines.update(range(start, end + 1))
+    return lines
+
+
+def _ignorable_lines(source: str, tree: ast.AST) -> set[int]:
+    """Blank, comment, and docstring lines: nothing a mutant could change."""
+    import io
+    import tokenize
+
+    ignorable = _docstring_lines(tree)
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                ignorable.add(token.start[0])
+    except (tokenize.TokenError, IndentationError):
+        pass
+    for number, line in enumerate(source.splitlines(), start=1):
+        if not line.strip():
+            ignorable.add(number)
+    return ignorable
+
+
+def _comment_only_hunks(path: str, line_hunks: dict[int, int], ignorable: set[int]) -> set[tuple[str, int]]:
+    by_hunk: dict[int, list[int]] = {}
+    for line, hunk in line_hunks.items():
+        by_hunk.setdefault(hunk, []).append(line)
+    return {
+        (path, hunk)
+        for hunk, lines in by_hunk.items()
+        if lines and all(line in ignorable for line in lines)
+    }
+
+
+def _select_mutants(
+    candidates: list[dict],
+    max_mutants: int,
+    per_hunk_cap: int,
+    min_per_hunk: int,
+) -> tuple[list[dict], dict[tuple[str, int], int]]:
+    """Allocate the budget round-robin so the cap cannot starve a hunk.
+
+    Every mutatable hunk gets its minimum first; the remaining budget is dealt
+    one mutant per hunk per round. Selection is deterministic.
+    """
+    ordered = sorted(
+        candidates,
+        key=lambda item: (
+            item["path"],
+            int(item["hunk"]),
+            getattr(item["node"], "lineno", 0),
+            item["kind"],
+            item["operator_index"],
+        ),
+    )
+    by_hunk: dict[tuple[str, int], list[dict]] = {}
+    for item in ordered:
+        by_hunk.setdefault((item["path"], int(item["hunk"])), []).append(item)
+    cursor = {key: 0 for key in by_hunk}
+    selected: list[dict] = []
+    for key in sorted(by_hunk):
+        take = min(min_per_hunk, per_hunk_cap, len(by_hunk[key]))
+        selected.extend(by_hunk[key][:take])
+        cursor[key] = take
+    while len(selected) < max_mutants:
+        progressed = False
+        for key in sorted(by_hunk):
+            if len(selected) >= max_mutants:
+                break
+            limit = min(per_hunk_cap, len(by_hunk[key]))
+            if cursor[key] < limit:
+                selected.append(by_hunk[key][cursor[key]])
+                cursor[key] += 1
+                progressed = True
+        if not progressed:
+            break
+    return selected, {key: len(items) for key, items in by_hunk.items()}
 
 
 def _operator_sites(tree: ast.AST, changed_line_hunks: dict[int, int]) -> list[dict]:
@@ -238,6 +359,64 @@ def _risk_tier(path: str, policy: dict, default: str) -> str:
     return str(matches[0][2])
 
 
+
+
+def _covering_targets(
+    worktree: Path,
+    python_paths: list[str],
+    added_selectors: list[str],
+    selection: dict,
+) -> list[str]:
+    """Test files that can reach the changed modules, newest-first by name.
+
+    Mutation is scored against the tests that cover the change, not only the
+    tests the change added: a refactor moves exercised code, and the suite
+    that exercised it before still owns those branches. The wide set only runs
+    for mutants the added tests did not kill, so the fast path stays cheap.
+    """
+    mode = str(selection.get("wide") or "covering_module")
+    if mode in {"none", "off"}:
+        return []
+    cap = int(selection.get("wide_max_files", 4) or 4)
+    added_files = {selector.split("::", 1)[0] for selector in added_selectors}
+    stems = {Path(path).stem for path in python_paths}
+    app_dirs = sorted({
+        Path(*Path(path).parts[:2])
+        for path in python_paths
+        if len(Path(path).parts) >= 3 and Path(path).parts[0] == "backend"
+    })
+    scored: list[tuple[int, str]] = []
+    for app in app_dirs:
+        directory = worktree / app
+        if not directory.is_dir():
+            continue
+        for candidate in sorted(directory.glob("*.py")):
+            name = candidate.name
+            if not name.startswith(("test", "tests")):
+                continue
+            relative = candidate.relative_to(worktree).as_posix()
+            if relative in added_files:
+                continue
+            if any(stem and stem in candidate.stem for stem in stems):
+                score = 0
+            elif candidate.stem in {"test", "tests"}:
+                score = 1
+            else:
+                score = 2
+            scored.append((score, relative))
+    ranked = sorted(set(scored))
+    # Prefer tests that name the changed module or are the app's main suite;
+    # only fall back to arbitrary app tests when neither exists.
+    preferred = [relative for score, relative in ranked if score <= 1]
+    ordered = preferred or [relative for _score, relative in ranked]
+    if not ordered and mode == "covering_module":
+        ordered = [
+            app.as_posix()
+            for app in app_dirs
+            if (worktree / app).is_dir()
+        ]
+    return ordered[:cap]
+
 def check_mutation(ctx: dict) -> dict:
     paths, diff_proc, error = changed_paths(ctx)
     if error:
@@ -285,11 +464,15 @@ def check_mutation(ctx: dict) -> dict:
     if diff_error:
         return make_proof("MUTATION", ctx, result="FAIL", detail=f"cannot read diff: {diff_error}")
     diff = diff_proc_full["stdout"]
-    line_hunks, hunk_counts = _parse_hunks(diff)
+    line_hunks, hunk_counts, added_text, removed_text = _parse_hunks(diff)
+    scope_cfg = policy.get("scope") if isinstance(policy.get("scope"), dict) else {}
+    exclude_moved = bool(scope_cfg.get("exclude_moved_lines", True))
     candidates = []
     parse_failures = []
     per_hunk_total: dict[tuple[str, int], int] = {}
     source_texts = {}
+    comment_only: set[tuple[str, int]] = set()
+    relocated_sites = 0
     for path in python_paths:
         source_path = worktree / path
         relative_parts = Path(path).parts
@@ -304,8 +487,16 @@ def check_mutation(ctx: dict) -> dict:
         except SyntaxError as exc:
             parse_failures.append(f"{path}: {exc}")
             continue
+        comment_only |= _comment_only_hunks(
+            path, line_hunks.get(path, {}), _ignorable_lines(source, tree)
+        )
         sites = [site for site in _operator_sites(tree, line_hunks.get(path, {})) if site["kind"] in operators]
         for site in sites:
+            if exclude_moved and _is_relocated(
+                site["node"], added_text.get(path, {}), removed_text.get(path, set())
+            ):
+                relocated_sites += 1
+                continue
             hunk_key = (path, int(site["hunk"]))
             per_hunk_total[hunk_key] = per_hunk_total.get(hunk_key, 0) + 1
             candidates.append({"path": path, **site})
@@ -326,33 +517,31 @@ def check_mutation(ctx: dict) -> dict:
         )
 
     env = ctx.get("env") if isinstance(ctx.get("env"), dict) else {}
-    max_mutants = int(env.get("FACTORY_MAX_MUTANTS", env.get("max_mutants", 20)))
-    max_mutants = min(max(max_mutants, 1), 100)
+    default_total = int(policy.get("max_mutants_total", 60))
+    max_mutants = int(env.get("FACTORY_MAX_MUTANTS", env.get("max_mutants", default_total)))
+    max_mutants = min(max(max_mutants, 1), 200)
     per_hunk_cap = int(policy.get("max_mutants_per_hunk", 20))
     per_hunk_cap = min(max(per_hunk_cap, 1), 20)
-    # Keep the earliest stable sites, while explicitly failing if a cap omits
-    # any policy-generated mutant.
-    candidates.sort(key=lambda item: (item["path"], item["hunk"], getattr(item["node"], "lineno", 0), item["kind"], item["operator_index"]))
-    selected = []
-    hunk_generated: dict[tuple[str, int], int] = {}
-    for item in candidates:
-        key = (item["path"], int(item["hunk"]))
-        hunk_generated[key] = hunk_generated.get(key, 0) + 1
-        if hunk_generated[key] > per_hunk_cap or len(selected) >= max_mutants:
-            continue
-        selected.append(item)
+    min_per_hunk = int(threshold_cfg.get("min_mutants_per_hunk", policy.get("min_mutants_per_hunk", 1)))
+    # The budget is dealt round-robin across mutatable hunks, so a global cap
+    # can never starve the last hunk. Every hunk gets its minimum before any
+    # hunk gets a second mutant.
+    selected, _hunk_generated = _select_mutants(
+        candidates, max_mutants, per_hunk_cap, min_per_hunk
+    )
     truncated = len(selected) != len(candidates)
 
-    # Only hunks that actually expose a supported operator can carry a test
-    # gap. Hunks without one are recorded as not-applicable, not failed; a file
-    # with no supported operator at all already took the SKIP path above.
+    # Only a hunk with a supported operator can carry a test gap. A
+    # comment/docstring-only hunk has nothing to mutate by definition, and a
+    # hunk with only relocated code has no new behaviour; both are recorded as
+    # ineligible rather than failed. The minimum applies to mutatable hunks
+    # only, so the cap can never manufacture a below-minimum hunk.
     source_hunks = {
         (path, hunk)
         for path, count in hunk_counts.items()
         if path in python_paths
         for hunk in range(1, count + 1)
     }
-    min_per_hunk = int(threshold_cfg.get("min_mutants_per_hunk", policy.get("min_mutants_per_hunk", 1)))
     mutatable_by_hunk: dict[tuple[str, int], int] = {}
     selected_by_hunk: dict[tuple[str, int], int] = {}
     for item in candidates:
@@ -366,13 +555,21 @@ def check_mutation(ctx: dict) -> dict:
         for path, hunk in source_hunks
         if mutatable_by_hunk.get((path, hunk), 0) > 0
     }
+    comment_only_hunks = sorted(
+        f"{path}#{hunk}" for path, hunk in (source_hunks & comment_only)
+    )
     not_applicable_hunks = [
-        f"{path}#{hunk}" for path, hunk in sorted(source_hunks - mutatable_hunks)
+        f"{path}#{hunk}"
+        for path, hunk in sorted(source_hunks - mutatable_hunks - comment_only)
     ]
+    starved_hunks = {
+        (path, hunk)
+        for path, hunk in mutatable_hunks
+        if selected_by_hunk.get((path, hunk), 0) < min_per_hunk
+    }
     hunk_errors = [
         f"{path} hunk {hunk}: {selected_by_hunk.get((path, hunk), 0)} mutants, minimum {min_per_hunk}"
-        for path, hunk in sorted(mutatable_hunks)
-        if selected_by_hunk.get((path, hunk), 0) < min_per_hunk
+        for path, hunk in sorted(starved_hunks)
     ]
 
     pytest = _pytest_command(worktree)
@@ -386,9 +583,23 @@ def check_mutation(ctx: dict) -> dict:
     version = _pytest_version(pytest, ctx, worktree)
     added_tests, _added_lines_unused = _test_nodeids(diff, worktree)
     selectors = sorted({test["nodeid"] for test in added_tests})
-    pytest_args = [*pytest, "-q", *(selectors if selectors else [])]
+    selection_cfg = policy.get("test_selection") if isinstance(policy.get("test_selection"), dict) else {}
+    wide_targets = _covering_targets(worktree, python_paths, selectors, selection_cfg)
+    if not selectors and not wide_targets:
+        return make_proof(
+            "MUTATION", ctx, result="SKIP", command=["factory-mutation-runner"],
+            tool_name="factory-mutation-runner", version="1.1", exit_code=0,
+            stdout=canonical_json({"changed_python": python_paths, "mutants": 0}),
+            detail="no added test and no covering test file for the changed module; mutation is not applicable",
+        )
+    if selectors:
+        pytest_args = [*pytest, "-q", *selectors]
+        wide_args = [*pytest, "-q", *wide_targets] if wide_targets else []
+    else:
+        pytest_args = [*pytest, "-q", *wide_targets]
+        wide_args = []
 
-    timeout_seconds = min(max(int(policy.get("timeout_s", 300)), 1), 300)
+    timeout_seconds = min(max(int(policy.get("timeout_s", 600)), 1), 1800)
     start = time.monotonic()
     summaries = []
     killed = 0
@@ -442,6 +653,25 @@ def check_mutation(ctx: dict) -> dict:
                 stdout=combined,
                 detail="relevant test baseline fails before mutation; kill scores would be invalid",
             )
+        if wide_args:
+            wide_baseline = run_process(
+                wide_args, ctx=ctx, cwd=sandbox,
+                timeout=min(timeout_seconds, 120),
+                env=_test_env(
+                    sandbox, ctx, "sqlite",
+                    debug=True, sqlite_url="sqlite:///test-db.sqlite3",
+                ),
+            )
+            wide_combined = (wide_baseline["stdout"] or "") + (wide_baseline["stderr"] or "")
+            if wide_baseline["exit"] == 5 or "no tests ran" in wide_combined.lower():
+                wide_args = []
+            elif wide_baseline["error"] or wide_baseline["exit"] != 0:
+                return make_proof(
+                    "MUTATION", ctx, result="FAIL",
+                    command=wide_args, tool_name="pytest", version=version,
+                    exit_code=wide_baseline["exit"], stdout=wide_combined,
+                    detail="covering-test baseline fails before mutation; mutation scores would be invalid",
+                )
         for index, item in enumerate(selected):
             remaining = timeout_seconds - (time.monotonic() - start)
             if remaining <= 0:
@@ -462,17 +692,38 @@ def check_mutation(ctx: dict) -> dict:
             mutated_path = sandbox / item["path"]
             original = source_texts[item["path"]]
             mutated_path.write_text(mutant, encoding="utf-8")
+            env_for_run = {
+                **_test_env(
+                    sandbox, ctx, "sqlite",
+                    debug=True, sqlite_url="sqlite:///test-db.sqlite3",
+                ),
+                "FACTORY_MUTANT_INDEX": str(index),
+            }
             proc = run_process(
                 pytest_args, ctx=ctx, cwd=sandbox,
                 timeout=max(1, min(90, remaining)),
-                env={
-                    **_test_env(
-                        sandbox, ctx, "sqlite",
-                        debug=True, sqlite_url="sqlite:///test-db.sqlite3",
-                    ),
-                    "FACTORY_MUTANT_INDEX": str(index),
-                },
+                env=env_for_run,
             )
+            used = "fast"
+            # A survivor of the task's own tests is re-run against the tests
+            # that cover the changed module before it is called a survivor.
+            if (
+                wide_args
+                and not proc["timed_out"]
+                and not proc["error"]
+                and proc["exit"] == 0
+            ):
+                remaining_wide = timeout_seconds - (time.monotonic() - start)
+                if remaining_wide <= 0:
+                    invalid += 1
+                    outcome = "timeout_budget_exhausted"
+                else:
+                    proc = run_process(
+                        wide_args, ctx=ctx, cwd=sandbox,
+                        timeout=max(1, min(90, remaining_wide)),
+                        env=env_for_run,
+                    )
+                    used = "wide"
             mutated_path.write_text(original, encoding="utf-8")
             if proc["timed_out"]:
                 invalid += 1
@@ -490,6 +741,7 @@ def check_mutation(ctx: dict) -> dict:
                 "index": index, "path": item["path"], "hunk": item["hunk"],
                 "line": getattr(item["node"], "lineno", None),
                 "operator": item["kind"], "outcome": outcome,
+                "selection": used,
             })
 
     total_generated = len(candidates)
@@ -510,9 +762,11 @@ def check_mutation(ctx: dict) -> dict:
         policy_errors.append(f"kill ratio {ratio:.3f} is below tier threshold {ratio_threshold:.3f}")
     if high_survivors:
         policy_errors.append(f"{len(high_survivors)} survivor(s) remain in high/max risk hunks")
-    if truncated:
+    if starved_hunks:
         policy_errors.append(
-            f"MUTATION_TRUNCATED: generated {total_generated}, ran {total_run} (cap {max_mutants}, per-hunk cap {per_hunk_cap})"
+            "MUTATION_TRUNCATED: the budget starved "
+            f"{len(starved_hunks)} mutatable hunk(s) below the minimum of {min_per_hunk} "
+            f"(generated {total_generated}, ran {total_run}, cap {max_mutants})"
         )
     if total_run == 0:
         policy_errors.append("MUTATION_NO_MUTANTS: no mutants were executed")
@@ -538,16 +792,41 @@ def check_mutation(ctx: dict) -> dict:
             }
             for path, hunk in sorted(source_hunks)
         },
+        "truncated": truncated,
+        "relocated_sites_excluded": relocated_sites,
+        "comment_only_hunks": comment_only_hunks,
         "not_applicable_hunks": not_applicable_hunks,
+        "starved_hunks": [f"{path}#{hunk}" for path, hunk in sorted(starved_hunks)],
+        "test_selection": {
+            "fast": selectors,
+            "wide": wide_targets,
+            "wide_used": bool(wide_args),
+        },
         "mutants": summaries,
         "errors": policy_errors,
     }
     result = "FAIL" if policy_errors else "PASS"
     command = pytest_args
+    artifacts: list[dict] = []
+    task_id = str(ctx.get("task_id") or "")
+    if task_id:
+        text = canonical_json(evidence)
+        try:
+            artifact_path = evidence_dir(task_id) / "artifacts" / "MUTATION.json"
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_text(text, encoding="utf-8")
+            artifacts = [{
+                "path": str(artifact_path),
+                "sha256": sha256(text),
+                "kind": "mutation-evidence",
+            }]
+        except (FactoryError, OSError):
+            pass
     return make_proof(
         "MUTATION", ctx, result=result, command=command,
         tool_name="pytest+factory-ast-mutator", version=version,
         exit_code=1 if policy_errors else 0, stdout=canonical_json(evidence),
+        artifacts=artifacts,
         detail="; ".join(policy_errors) if policy_errors else (
             f"killed {killed}/{total_run} mutants ({ratio:.1%}); tier threshold {ratio_threshold:.1%}; "
             f"bounded by --max-mutants {max_mutants}"

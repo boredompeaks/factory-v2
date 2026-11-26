@@ -3,6 +3,9 @@
 This is the operational answer to two questions: what actually runs a gate, and
 how the shared PostgreSQL/SQLite services are kept from colliding.
 
+For what a failing check *means* — invariants versus hygiene deltas versus
+declared debt and audited exceptions — see `docs/GATE-HIERARCHY.md`.
+
 ## What triggers a gate
 
 There is no daemon, cron job, or CI hook that runs the factory gate. A gate is
@@ -42,7 +45,7 @@ green CI run does not replace a proof.
 
 | Service | Port | Data | Limit (after this change) |
 | --- | --- | --- | --- |
-| `pg2a` | 127.0.0.1:5432 | tmpfs, fsync off | 1 GB, 2.0 CPU, 1.5 GB swap cap, 128 MB shm, `max_connections=100` |
+| `pg2a` | 127.0.0.1:5432 | tmpfs, fsync off | 1 GB, 2.0 CPU, 1.5 GB swap cap, 512 MB data tmpfs, 128 MB shm, `max_connections=100` |
 | `pg2b` | 127.0.0.1:5433 | tmpfs, fsync off | same |
 | `redis` | 127.0.0.1:6379 | tmpfs | 96 MB, 0.25 CPU |
 | K1 app | internal only | read-only rootfs | 768 MB, 1.0 CPU |

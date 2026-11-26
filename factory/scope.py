@@ -34,10 +34,70 @@ def _glob_regex(pattern: str) -> re.Pattern[str]:
     return re.compile("".join(out))
 
 
+_SOURCE_SUFFIXES = (".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+
+
+def _pattern_matches(path: str, pattern: str) -> bool:
+    if _glob_regex(pattern).match(path):
+        return True
+    # A trailing "/**" names a package *or* the module of the same name:
+    # `backend/**/webhooks/**` must also cover `backend/orders/webhooks.py`,
+    # which is how the product actually spells that package.
+    if pattern.endswith("/**"):
+        stem = pattern[:-3]
+        for suffix in _SOURCE_SUFFIXES:
+            if _glob_regex(stem + suffix).match(path):
+                return True
+    return False
+
+
 def path_matches(path: str, pattern: str) -> bool:
-    normalized_path = _normalize(path)
-    normalized_pattern = _normalize(pattern)
-    return bool(_glob_regex(normalized_pattern).match(normalized_path))
+    return _pattern_matches(_normalize(path), _normalize(pattern))
+
+
+def _backend_variants(path: str) -> list[str]:
+    """A path written from the product root also names the repo-root path."""
+    if path.startswith("backend/"):
+        return [path, path[len("backend/"):]]
+    return [path, "backend/" + path]
+
+
+def _scope_samples(scope: str) -> list[str]:
+    """Concrete paths that stand for a wildcard scope.
+
+    Dispatch only needs to know whether a scope *can* touch a rule's area, so
+    the literal segments are sampled with a representative leaf. `**/views/**`
+    therefore samples `views/x.py`, which matches `backend/**/views/**`.
+    """
+    segments = [
+        segment
+        for segment in _normalize(scope).strip("/").split("/")
+        if segment and segment not in {"**", "*"}
+    ]
+    if not segments:
+        return []
+    base = "/".join(segments)
+    return [base, base + "/x.py", base + ".py"]
+
+
+def dispatch_matches(scope: str, pattern: str) -> bool:
+    """Match a task scope against a dispatch-rule glob, generously.
+
+    Dispatch decides which reviews run before the builder, so a false positive
+    costs one review and a false negative skips a gate. Three forms are tried:
+    the scope as written, the same path from the product root, and samples of
+    a wildcard scope.
+    """
+    scope = _normalize(scope)
+    for candidate in _backend_variants(scope):
+        if _pattern_matches(candidate, pattern):
+            return True
+    if "*" in scope:
+        for sample in _scope_samples(scope):
+            for candidate in _backend_variants(sample):
+                if _pattern_matches(candidate, pattern):
+                    return True
+    return False
 
 
 def _normalize(value: str) -> str:

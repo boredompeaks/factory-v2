@@ -48,14 +48,16 @@
     "AGT_PARITY",
     "AGT_AUDIT",
     "RADON",
-    "BANDIT"
+    "BANDIT",
+    "DEVIATION"
   ],
   "gate_sets_by_kind": {
     "DOC": [
       "SCOPE",
       "CHANGELOG",
       "SECRETS",
-      "CONVENTION"
+      "CONVENTION",
+      "DEVIATION"
     ],
     "FIX": [
       "SCOPE",
@@ -72,6 +74,7 @@
       "ARCH",
       "RADON",
       "BANDIT",
+      "DEVIATION",
       "ZIZMOR"
     ],
     "FEATURE": [
@@ -89,6 +92,7 @@
       "ARCH",
       "RADON",
       "BANDIT",
+      "DEVIATION",
       "ZIZMOR"
     ],
     "SECURITY": [
@@ -106,6 +110,7 @@
       "ARCH",
       "RADON",
       "BANDIT",
+      "DEVIATION",
       "AUTHZ_MATRIX",
       "GUARD_DELTA",
       "ORACLE_PROVENANCE",
@@ -127,6 +132,7 @@
       "ARCH",
       "RADON",
       "BANDIT",
+      "DEVIATION",
       "AUTHZ_MATRIX",
       "GUARD_DELTA",
       "ORACLE_PROVENANCE",

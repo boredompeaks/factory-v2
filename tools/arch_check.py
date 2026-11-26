@@ -22,8 +22,13 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+try:  # pragma: no cover - exercised by the import fallback test
+    import symbols as symbol_backend
+except ImportError:  # a lone arch_check.py copy degrades to regex resolution
+    symbol_backend = None
+
 TOOL = "arch_check"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 SCHEMA = "factory-tool/1"
 HERE = Path(__file__).resolve().parent
 DEFAULT_LAYERS = HERE.parent / "policies" / "layers.json"
@@ -96,6 +101,7 @@ class FileDiff:
     path: str
     new_file: bool = False
     added: dict = field(default_factory=dict)
+    removed: dict = field(default_factory=dict)
     hunks: list = field(default_factory=list)
 
 
@@ -227,6 +233,7 @@ def parse_diff(text: str) -> list[FileDiff]:
             current.added[new_line] = body
             new_line += 1
         elif tag == "-":
+            current.removed[old_line] = body
             old_line += 1
         elif tag == " " or raw == "":
             old_line += 1
@@ -415,11 +422,63 @@ def allow_matches(entry: dict, kind: str, from_: str, to: str, path: str) -> boo
     return True
 
 
+
+
+def _read_repo_text(repo: str | None, path: str) -> str | None:
+    if not repo:
+        return None
+    try:
+        return (Path(repo) / path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _package_surface(repo: str | None, path: str, rules: dict) -> set[str]:
+    if not repo or symbol_backend is None:
+        return set()
+    init_path = Path(repo) / Path(path).parent / "__init__.py"
+    return symbol_backend.package_surface(init_path, rules)
+
+
+def _published_symbols(
+    path: str,
+    source: str | None,
+    rules: dict,
+    repo: str | None,
+    backend: str | None,
+) -> dict[int, str] | None:
+    if source is None or symbol_backend is None:
+        return None
+    try:
+        return symbol_backend.resolve(
+            path,
+            source,
+            rules,
+            backend=backend,
+            package_all=_package_surface(repo, path, rules),
+        )
+    except symbol_backend.SymbolError as exc:
+        raise ToolError(str(exc)) from None
+
+
+def _relocated_names(fd: FileDiff) -> set[str]:
+    names = set()
+    for body in fd.removed.values():
+        if symbol_backend is not None:
+            name = symbol_backend.def_names_in_line(body)
+        else:
+            match = PY_DEF.match(body) or PY_CLASS.match(body)
+            name = match.group(1) if match else None
+        if name:
+            names.add(name)
+    return names
+
 def evaluate(
     diff_text: str,
     layers: dict,
     allow: list[dict],
     repo: str | None = None,
+    backend: str | None = None,
 ) -> tuple[list[dict], dict]:
     files = parse_diff(diff_text)
     if not files:
@@ -433,6 +492,7 @@ def evaluate(
     for spec in (layers.get("layers") or {}).values():
         public_globs.extend((spec or {}).get("public_surface") or [])
     public_map = GlobMap({glob: glob for glob in dict.fromkeys(public_globs)})
+    surface_rules = layers.get("public_surface_rules") or {}
 
     findings: list[dict] = []
     allowed: list[dict] = []
@@ -578,24 +638,61 @@ def evaluate(
 
         is_public = public_map.best(path) is not None
         if is_public:
-            if fd.new_file:
+            py_rules = surface_rules.get("python") or {}
+            prefix = str(py_rules.get("private_prefix", "_"))
+            private_file = bool(py_rules.get("private_new_file", True)) and bool(prefix) and Path(path).name.startswith(prefix)
+            if fd.new_file and not private_file:
                 emit(
                     "public_surface", path, 1, source_layer or "", path,
                     f"public_surface:new:{path}", "new file under public_surface",
                 )
-            for line, body in ordered:
-                names = []
-                for pattern in (PY_DEF, PY_CLASS, JS_EXPORT):
-                    match = pattern.match(body)
+            relocated = _relocated_names(fd)
+            relocated_is_not_new = bool(py_rules.get("relocated_is_not_new", True))
+            if path.endswith(".py"):
+                source = _read_repo_text(repo, path)
+                published = _published_symbols(path, source, py_rules, repo, backend)
+                if published is not None:
+                    for line, name in sorted(published.items()):
+                        if line not in fd.added:
+                            continue
+                        if relocated_is_not_new and name in relocated:
+                            continue
+                        emit(
+                            "public_surface", path, line, source_layer or "", path,
+                            f"public_surface:{path}:{name}", fd.added[line],
+                        )
+                else:
+                    # No source text (diff-only invocation): degrade to the
+                    # line regex, but still honour the private-name rule that
+                    # separates a module-internal helper from a published def.
+                    for line, body in ordered:
+                        if py_rules.get("module_level_only", True) and body[:1] in (" ", "\t"):
+                            continue
+                        match = PY_DEF.match(body) or PY_CLASS.match(body)
+                        if not match:
+                            continue
+                        name = match.group(1)
+                        if prefix and name.startswith(prefix):
+                            continue
+                        if relocated_is_not_new and name in relocated:
+                            continue
+                        emit(
+                            "public_surface", path, line, source_layer or "", path,
+                            f"public_surface:{path}:{name}", body,
+                        )
+            else:
+                for line, body in ordered:
+                    names = []
+                    match = JS_EXPORT.match(body)
                     if match:
                         names.append(match.group(1))
-                if JS_EXPORT_LIST.match(body):
-                    names.append("export")
-                for name in names:
-                    emit(
-                        "public_surface", path, line, source_layer or "", path,
-                        f"public_surface:{path}:{name}", body,
-                    )
+                    if JS_EXPORT_LIST.match(body):
+                        names.append("export")
+                    for name in names:
+                        emit(
+                            "public_surface", path, line, source_layer or "", path,
+                            f"public_surface:{path}:{name}", body,
+                        )
 
         if fd.new_file and path.endswith(NEW_MODULE_SUFFIXES):
             if owner_map.best(path) is None:
@@ -705,6 +802,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--diff-file")
     parser.add_argument("--layers", default=str(DEFAULT_LAYERS))
     parser.add_argument("--allow")
+    parser.add_argument(
+        "--symbol-backend",
+        default=None,
+        help="override the public-surface resolver (python_ast, regex, or module:callable)",
+    )
     parser.add_argument("--control", action="store_true")
     parser.add_argument("--out")
     try:
@@ -743,14 +845,20 @@ def main(argv: list[str] | None = None) -> int:
             diff_text = run_git_diff(repo, args.base, args.head)
             source = "git"
 
-        findings, extras = evaluate(diff_text, layers, allow, repo)
+        findings, extras = evaluate(diff_text, layers, allow, repo, args.symbol_backend)
         code = 1 if findings else 0
+        surface_rules = layers.get("public_surface_rules") or {}
         extras.update(
             {
                 "base": args.base,
                 "head": args.head,
                 "diff_source": source,
                 "layers": str(args.layers),
+                "symbol_backends": {
+                    str(language): str((rules or {}).get("backend") or "")
+                    for language, rules in surface_rules.items()
+                    if isinstance(rules, dict)
+                },
             }
         )
         doc = envelope("RESULT", findings, {"ran": False, "passed": True, "cases": []}, code, extras)
